@@ -1,0 +1,832 @@
+<!DOCTYPE html><html lang="it"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Piano Performance 2025-2027 | Regione Molise</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script>window.CHART_OK=false;</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" onload="window.CHART_OK=true"></script>
+<script>
+window.LOGO_SM="data:image/png;base64,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XKnPWt45ZRJph8Zo/+YY7QJFEJGZk9sa3ntO+PGvRrkihiEpF0EY0yUSPmrhqlkxWlHsGpOE5d4PrsZll89qn+75mdo3y9aQyYzRUTwBEDHM9rf/vffNX/xL9p6bcN+vdZA1ItiXaePRKl7SxEkcR+TgBz9FSz82Z+bkfL4wdmDHFHBfIQXAkux8rWvnjmf9++/0nn/Md3SccayIY4QRBDQBAwhD2kpmASTRrITBuj1hb9s0vmh1ZtHSjulTskEgYwt3bAEPDqS79x7cufN39OgP8InNmb1dkCHj+iQOcbqXi0WQRCugRCfAkapY1m64YKk9b1XTnBPbJ47XrisCYwr2GACLCDMPdzCKWYgw7K281LX34I5f66e+p194Qu/vIkkIwGqXUTlSFWHDQAA2qItPWJgs+UBh7qK2yRPaGhoAaTjdMnPtZ1jGBvBgUYYWS/rXuoXfPFzas+/A4Vd/Ry++YF/6tbP3JVU6ACYGJBvUScNEM30WdbzbOeFdTW2tE+oLruOnUzlM57TvK2ttjfuFjxVw+qRHH330rrvuuuOOO5qamowxRPRWEdNzV/2dGYBSGL1ZqpQOH0p6upNSyZqqkNK5nJevyxaK9bmgIZslrQGgP7t4+yQaY4wxvu9v2bLlZz/72S233DI6zCMDnOqzUqksXLjwox/96NatW9etW9fR0QHDH6ER6TtPOaCixFoGAQBHKYV9TpHu8x7Ohgdm82tf+9pTTz112WWXIeIll1zyDrYwNnGYma21a9asyWazBw8e7OrqeuaZZ1atWvXII4+k36Ym8LYQne79FRERISLPcTKOm3FcTSpN1NLjl29DO6AJIjLGbNy48dprr506deobb7yxdevWtra2559/fhT+ODLASqlSqdTS0nLfffd95zvfueeee55++umDBw8+9thjGzduJKIkSZRS1lpmTolN+pcGhmOat/3dWmuMSZlJRHp7e7dv375hw4aHHnqou7t72rRpp59+erVa/f73v//Tn/5UKfXWAy7HIdMqFApr1671ff8973lPHMe//OUvJ02a1N7e/r73ve/CCy9cvnz5pk2blFIpgafvImKtlf7B/WMAYWod6dSkZ2OJaNeuXelfVq9enc1mW1pacrnc6tWrly9fXi6XzznnnGuvvdZae3xNum9px5i2traNGzf+/Oc/J6KLLrpo3rx569atO/XUU2+//fYnnnji4YcfXrduHTM//vjjBw8eRESl+g9EIlL/GLCa1NTTqdm8efP111+/e/fu1atX/+Y3v8lms+eff/7OnTtXrlyptW5ubm5ubr7//vuXLVvGzMedtI4cTz755Ne//vWbbrpp1apVt91226ZNm2bNmtXV1bV3795Dhw6JSFdX16233rpt27alS5eGYSgi5XJ53759+Xx+4cKFhw8ffvDBB1euXPmVr3ylpaVFKfXYY48tWLDgmWeemTFjRn19/TXXXLN///5zzz33y1/+8o4dOy644IL29vah4sJx60u/jVQWL168ePFiY8xHPvKRz33uc/v370fEnp4e3/ettZs3b77hhhvuvvvuH/7wh7t27crn82EYbtmy5Ywzzmhqalq4cGF3d/eqVatEZMuWLRMmTPB9/6qrrlq8ePH555/f0dFx7733HjhwIAiCW265pbOzc9myZanxaz16sUf/y5RpUnYhoksvvXT+/Pmvv/76+PHj161bd/bZZ99555179uzZtm3b/PnzFy1a9Nxzz3met3LlykceeYSZx48fDwDFYvGss8667777CoVCY2NjZ2fn2rVrr7jiij179ixbtqynp6exsXHZsmWNjY1pKE7Z4ZjaFcdaXhKl4Jl59uzZs2fPjuN4/fr19fX127dvX7Vq1Zw5c84888xXXnllxYoVl19++Zo1a5IkWbJkSbFYZOZcLtfa2rpv3770bhdddFEQBFu3bt20aVNra+vVV189OJ08FsUep2pJBogkzUPiOHZdd//+/a+++urs2bM3bNiwYsWK6667znXdpqamtWvXaq2/973vTZ061ff9pqamuro63/cH3y2d0zEsmI5LtZSiTVO/kSaAaQAbNSf9ocrDI0oJESJKw+ZAuTPAAkNmIMdp4P//50P/D/j/1vgfzI/AXAFaA58AAAAASUVORK5CYII=";
+window.LOGO_MD="data:image/png;base64,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/MSa9cOtBrWawaYh+9Rj+OTKYM1juHkdNusonpW2URHa+3TnTJk1j2ftYjv6MCzEhXCX3r6unt4MQIklQQQ1zgpm3vsJlyx+EYDOH/eDH/zgwQcffNxxx43bEsHRknWS75FKAFBv1DcMDa8fHm4lDXQObQrWinfsnRChMRAYMiGoKAp1R7nY29VdLFfGZHOr/sXtS3E+06aUqtfrp59++rHHHnvMMcdMPe4ydc05JyJXXXUVALS1tZ122mlJkjCztdZ7P/77MDMzj/03bSUbh4aeWr36kVWPPvjQQw88/NCDDz/88KOrnnr66Q0bh5JmY1sXjueLsixLkkREbrzxxoGBgde97nVr1qwZe5cpbFMGtPfee79u3bowDD/5yU/WarX99tvvqKOOGoM4h3ucQDBzfvJ4zs9P3qG+fBaUV155JQBcfvnlIvKud73rG9/4Rn7CDnXb9htN1bDIGfkDH/hAoVC47rrrfvzjHy9duvSmm24aHh5+73vfe+utt2qtx6/98yj22Nz5tsXkTyeP/+Z5ryil1q9ff/7551999dX7779/b2/vH/7wh8HBwQceeOCwww4bm7J4aVGHtXZMLu6///6TTz45CIJFixYtX778sssuA4AZM2Ycf/zx9957b5ZluaRMrbxMoN16663z5s078MAD99prr82bN19//fUAcM4554jILbfcctBBB61atSofLi8h6siH7c9//vMLL7xQRM4+++wDDzww74BCofChD32oVqudcsopg4ODz3pu59wERv2OPptzLv8iZk6S5KKLLlq3bt2rX/3qo48++umnn7700ksvueQS7/3xxx+/bNmyD33oQ5VK5bOf/Wy9Xh8/100rR499OOOMMwYGBkTk4x//eKFQ2GOPPd72trc98sgj9Xr9rrvueu1rXzs4OPiJT3yi0WhkWbY1z06hmOfgWmvTNM2PZFnmvW82m+Vy+WMf+9jVV19dKBTiOO7q6ioUCieffHK9Xi8Wi0uWLHnggQee9VIvIaDH3oqZ77nnno9//OMrV64EgK997Wu1Wu2oo4469dRTh4aG4jg+6qijrrjiipkzZy5btkxEVq5cuXbt2q1VU/45l8Gxbti+JhxjsPzaZ53/05/+9LTTTvPe5/16ySWXxHGcJMmdd975k5/8RES+/OUvVyoVZn7ooYdyGsx7ZQrJDXbemL3jjjte8YpX7Lvvvt/73vfyI2eeeebs2bPzz4899tiiRYs2btx4wAEHnHnmmSJy5513XnPNNU899dTWJsHY2+a0nqM/JvhjQGw9FPJrv/71rx922GFHHHHEb37zm7vvvhsA7r333rwzRkZGyuXy5Zdf/stf/nL+/PnveMc72traLrzwwq0H5ZSjATuJFnO5sNZ+9atf7e/vf8Mb3iAihxxyyBlnnCEiORU+8MADjz76KCL+6le/+uIXv0hECxcubG9vv/jii0XkF7/4xa9//WvvfZIkjUZjW8I1PDz8+9//3jmXJMmnPvWpXJude+65uZV57LHHBkHwxBNPLF269NRTT2XmZrOZn9Db2/vEE0989KMfffOb3/zLX/5ybEDsJBW9syQ6F8D888aNG5cvX55T9syZM59++unly5cDwOc+97lvf/vbM2fOvOOOOwDgqquuEpFLL70UANauXXvYYYe1tbVZa2+55ZalS5c+8sgjRx555NKlSw888MD99tvvF7/4RX7zU045JQiC5cuXP/nkkwBQrVbXrVtXLBZzW1hEdt1117PPPvvqq6+uVCr5keXLl9911139/f033XTTs9TyzjOEdiJ1PMsvyBXRG9/4xr6+vsHBQWPMmjVrXve615166qkXX3xxrjydc8PDw3Ec33DDDUceeSQAXHvttT/4wQ/mz5//+OOPA8B555134403/vd///cTTzyRD/D3ve99APCWt7zl9ttvr1Qqs2bNuv/++zs7O6+++ur8q88888xly5aNjIzEcXzMMccsXrx43rx5d91114YNGxqNhrV2Rx3XF9Nh2U5TSo05x2EYfve737322mvf8573/OxnPwOAG2644cQTT3TOjZ182223JUnS29s7NDR0+OGHX3DBBb/73e8GBgZKpVKxWFyxYsXPfvaz3//+952dnbkvM2vWrLwbrrjiir333rtYLI6MjBx66KHnnXeeUspae+ONN86cObNcLp9wwgmbNm0699xzV6xYsc8++3R2dkZRpJTaIU/qJRHrGE8EY2vZefLJJ88555zh4eE//vGP5XL5xBNPvPzyyyuVynHHHVer1Xp6em6++ebBwcHZs2e/+93vXr9+fRiGJ5xwwmmnnXb66adv3LgxH+a5X3fWWWch4kc+8pFDDz304osvXrVqVVdX19y5c+fPn79kyZJc/MfsvAlERf4MqGNbHsSYBZ2rzRUrVhx33HGDg4Pvfe976/X6bbfdBgBZll1wwQUA8IUvfGH9+vVa67vuuktEWq1WmqZ5n91+++1dXV0/+tGPAOCCCy446aSTTj31VBFZvXr15Zdffs011+T45rBOran+Ugd6a/s398ifGypbuXLl+eefb63dtGnT4ODgd77zndWrV1cqlZ6entmzZ3d0dFx77bX5mTnRP/TQQxdccMF99923atWqVatWPeuGz2tcT3N78Sdnx6YLRCTPHBubLsg/j3XM2rVrsyzL7Zn+/v5KpTKeQPNOmjH585sF386sUq5IxwlTHj7Mz38pIPvnAfSzQH/W7gm57L8E0fzzBvovo9HLELwM9MtAv9xeBvol2/4fvcmK/stoYAUAAAAASUVORK5CYII=";
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700&family=Lora:wght@700&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Titillium Web',sans-serif;background:#f2f5f9;color:#17324d}
+input:focus,textarea:focus,select:focus{border-color:#0066cc!important;box-shadow:0 0 0 2px rgba(0,102,204,.15);outline:none}
+.svc:hover{background:#e8f0fe!important}
+.cd{background:#fff;border-radius:4px;border:1px solid #d9dadb;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.kc{background:#fff;border-radius:4px;border:1px solid #d9dadb;padding:14px;text-align:center}
+.tb{padding:9px 18px;border:none;border-bottom:3px solid transparent;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#5c6f82;font-family:inherit}
+.tb.ac{color:#003366;border-bottom-color:#003366}
+button{font-family:inherit}
+</style></head><body><div id="root"></div>
+<script>
+
+window._SUBS = [];
+window._saveSubs = function(s){ window._SUBS = s; try{localStorage.setItem("ppo8",JSON.stringify(s))}catch(e){} };
+window._loadSubs = function(){ try{return JSON.parse(localStorage.getItem("ppo8")||"[]")}catch(e){return[]} };
+
+window._mkPDF = function(en){
+  console.log("_mkPDF called for:", en.serviceCode, en.type);
+  var doc = new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var W=297,H=210,mx=8,mxR=W-8,cW=mxR-mx;
+  var d=en.data, area=en.areaName, sN=en.serviceName, sC=en.serviceCode;
+  var ck = function(a,v){ return (a||[]).indexOf(v)>=0 ? "[X]" : "[ ]"; };
+  var ts={fontSize:7,cellPadding:2.2,lineColor:[170,170,170],lineWidth:0.2,textColor:[23,50,77]};
+  var hd=[230,236,244], yc=[255,249,225];
+  var isStr = en.type==="strategic";
+
+  // Header
+  doc.setFillColor(0,51,102); doc.rect(0,0,W,20,"F");
+  try{ doc.addImage(window.LOGO_MD,"PNG",6,2,16,16); }catch(e){}
+  doc.setTextColor(255,255,255); doc.setFontSize(11); doc.setFont(undefined,"bold");
+  doc.text("REGIONE MOLISE",25,8);
+  doc.setFontSize(7); doc.setFont(undefined,"normal");
+  doc.text("Servizio Supporto Direttore Generale della Giunta Regionale",25,13);
+  doc.text("Piano della Performance Organizzativa 2025-2027 | DGR n. 149/2025",25,17);
+  doc.text(new Date(en.timestamp).toLocaleString("it-IT"),mxR,8,{align:"right"});
+  doc.text(sC+" - "+sN,mxR,14,{align:"right"});
+  var y=24;
+  var title = isStr ? "SCHEDA OBIETTIVO STRATEGICO" : "SCHEDA OBIETTIVO OPERATIVO";
+
+  doc.setFillColor(0,51,102); doc.setTextColor(255); doc.setFontSize(10); doc.setFont(undefined,"bold");
+  doc.rect(mx,y,cW,7,"F"); doc.text(title,mx+3,y+5); y+=9;
+
+  if(isStr){
+    doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
+      [{content:"CODICE OB. STRATEGICO",styles:{fontStyle:"bold",fillColor:hd,cellWidth:50}},{content:d.codice||"-",colSpan:2},{content:"peso %",styles:{fontStyle:"bold",fillColor:hd,cellWidth:16}},{content:(d.peso||"-")+"%"}],
+      [{content:"NOME/DESCRIZIONE\n(max. 40 parole)",styles:{fontStyle:"bold",fillColor:hd}},{content:d.nome||"-",colSpan:3}],
+      [{content:"AREA ORGANIZZATIVA",styles:{fontStyle:"bold",fillColor:hd}},{content:area,colSpan:3}],
+      [{content:"SERVIZIO",styles:{fontStyle:"bold",fillColor:hd}},{content:sN,colSpan:3}]
+    ],theme:"grid",styles:ts,columnStyles:{0:{cellWidth:50}}}); y=doc.lastAutoTable.finalY+1;
+
+    // Valore Pubblico
+    var IMP=["Impatto Sociale","Impatto Economico","Impatto Ambientale","Impatto Sanitario"];
+    var EFF=["Quantitativa Erogata","Quantitativa Fruita","Qualitativa Percepita","Qualitativa Erogata"];
+    var EFZ=["Efficienza Finanziaria","Efficienza Gestionale","Efficienza Temporale","Efficienza Produttiva"];
+    var SAL=["Organizzativa","Agile","Formativa","Professionale"];
+    doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
+      [{content:"VALORE\nPUBBLICO",rowSpan:4,styles:{fontStyle:"bold",fillColor:hd,valign:"middle",cellWidth:30}},
+       {content:"IMPATTO",styles:{fontStyle:"bold",fillColor:hd,cellWidth:28}},
+       {content:ck(d.impatto,IMP[0])+" "+IMP[0],styles:{fontSize:6}},{content:ck(d.impatto,IMP[1])+" "+IMP[1],styles:{fontSize:6}},{content:ck(d.impatto,IMP[2])+" "+IMP[2],styles:{fontSize:6}},{content:ck(d.impatto,IMP[3])+" "+IMP[3],styles:{fontSize:6}}],
+      [{content:"EFFICACIA ORG.",styles:{fontStyle:"bold",fillColor:hd}},
+       {content:ck(d.efficacia,EFF[0])+" "+EFF[0],styles:{fontSize:6}},{content:ck(d.efficacia,EFF[1])+" "+EFF[1],styles:{fontSize:6}},{content:ck(d.efficacia,EFF[2])+" "+EFF[2],styles:{fontSize:6}},{content:ck(d.efficacia,EFF[3])+" "+EFF[3],styles:{fontSize:6}}],
+      [{content:"EFFICIENZA ORG.",styles:{fontStyle:"bold",fillColor:hd}},
+       {content:ck(d.efficienza,EFZ[0])+" "+EFZ[0],styles:{fontSize:6}},{content:ck(d.efficienza,EFZ[1])+" "+EFZ[1],styles:{fontSize:6}},{content:ck(d.efficienza,EFZ[2])+" "+EFZ[2],styles:{fontSize:6}},{content:ck(d.efficienza,EFZ[3])+" "+EFZ[3],styles:{fontSize:6}}],
+      [{content:"SALUTE AMM.",styles:{fontStyle:"bold",fillColor:hd}},
+       {content:ck(d.salute,SAL[0])+" "+SAL[0],styles:{fontSize:6}},{content:ck(d.salute,SAL[1])+" "+SAL[1],styles:{fontSize:6}},{content:ck(d.salute,SAL[2])+" "+SAL[2],styles:{fontSize:6}},{content:ck(d.salute,SAL[3])+" "+SAL[3],styles:{fontSize:6}}]
+    ],theme:"grid",styles:ts}); y=doc.lastAutoTable.finalY+1;
+
+    var defrT = d.defr==="SI" ? "[X] SI  [ ] NO" : d.defr==="NO" ? "[ ] SI  [X] NO" : "[ ] SI  [ ] NO";
+    var STK=["Cittadini e collettivita","Aziende e imprese","Enti locali o altre PA","Utenti interni"];
+    var sStr = STK.map(function(s){ return ck(d.stakeholders,s)+" "+s; }).join("\n");
+    var dlStr = d.deadlineType==="fine_mandato" ? "Entro fine mandato" : d.deadlineType==="periodo" ? (d.deadlinePeriodo||"-") : "-";
+    doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
+      [{content:"DEFR",styles:{fontStyle:"bold",fillColor:hd,cellWidth:50}},{content:defrT},{content:"MISSIONE",styles:{fontStyle:"bold",fillColor:hd,cellWidth:30}},{content:d.missione||"-"}],
+      [{content:"Stakeholders",styles:{fontStyle:"bold",fillColor:hd}},{content:sStr,styles:{fontSize:6.5}},{content:"Deadline",styles:{fontStyle:"bold",fillColor:hd}},{content:dlStr}],
+      [{content:"Note",styles:{fontStyle:"bold",fillColor:hd}},{content:d.note||"-",colSpan:3}]
+    ],theme:"grid",styles:ts}); y=doc.lastAutoTable.finalY+2;
+
+    if(y>H-55){ doc.addPage(); y=10; }
+    doc.setFillColor(0,51,102); doc.setTextColor(255); doc.setFontSize(9); doc.setFont(undefined,"bold");
+    doc.rect(mx,y,cW,7,"F"); doc.text("RISULTATO ATTESO E INDICATORI",mx+3,y+5); y+=9;
+
+    doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
+      [{content:"RISULTATO FINALE",styles:{fontStyle:"bold",fillColor:hd,cellWidth:44}},{content:d.risultatoFinale||"-"},
+       {content:"2025",styles:{fontStyle:"bold",fillColor:yc,cellWidth:28}},{content:d.ris2025||"-"},
+       {content:"2026",styles:{fontStyle:"bold",fillColor:yc,cellWidth:28}},{content:d.ris2026||"-"},
+       {content:"2027",styles:{fontStyle:"bold",fillColor:yc,cellWidth:28}},{content:d.ris2027||"-"}]
+    ],theme:"grid",styles:ts}); y=doc.lastAutoTable.finalY+2;
+
+    doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
+      [{content:"",styles:{fillColor:hd,cellWidth:26}},{content:"Compless.",styles:{fontStyle:"bold",fillColor:hd}},{content:"2025",styles:{fontStyle:"bold",fillColor:yc}},{content:"2026",styles:{fontStyle:"bold",fillColor:yc}},{content:"2027",styles:{fontStyle:"bold",fillColor:yc}}],
+      [{content:"INDICATORE",styles:{fontStyle:"bold",fillColor:hd}},{content:d.ind||"-"},{content:d.indF2025||"-"},{content:d.indF2026||"-"},{content:d.indF2027||"-"}],
+      [{content:"UM",styles:{fontStyle:"bold",fillColor:hd}},{content:d.um||"-"},{content:d.umF2025||"-"},{content:d.umF2026||"-"},{content:d.umF2027||"-"}],
+      [{content:"Formula",styles:{fontStyle:"bold",fillColor:hd}},{content:d.formula||"-"},{content:d.formulaF2025||"-"},{content:d.formulaF2026||"-"},{content:d.formulaF2027||"-"}],
+      [{content:"BASELINE",styles:{fontStyle:"bold",fillColor:hd}},{content:d.baseline||"-"},{content:d.baselineF2025||"-"},{content:d.baselineF2026||"-"},{content:d.baselineF2027||"-"}],
+      [{content:"FONTE",styles:{fontStyle:"bold",fillColor:hd}},{content:d.fonte||"-"},{content:d.fonteF2025||"-"},{content:d.fonteF2026||"-"},{content:d.fonteF2027||"-"}]
+    ],theme:"grid",styles:ts,columnStyles:{0:{cellWidth:26}}});
+
+  } else {
+    // OPERATIVO
+    doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
+      [{content:"CODICE OB. OPERATIVO",styles:{fontStyle:"bold",fillColor:hd,cellWidth:50}},{content:d.codice||"-",colSpan:2},{content:"Peso",styles:{fontStyle:"bold",fillColor:hd,cellWidth:34}},{content:(d.peso||"-")+"%"}],
+      [{content:"NOME/DESCRIZIONE\n(max. 40 parole)",styles:{fontStyle:"bold",fillColor:hd}},{content:d.nome||"-",colSpan:3}],
+      [{content:"AREA ORGANIZZATIVA",styles:{fontStyle:"bold",fillColor:hd}},{content:area,colSpan:3}],
+      [{content:"SERVIZIO",styles:{fontStyle:"bold",fillColor:hd}},{content:sN,colSpan:3}],
+      [{content:"OB. STRATEGICO DI RIF.\n(Riportare la descrizione)",styles:{fontStyle:"bold",fillColor:hd}},{content:d.stratRif||"-",colSpan:3}]
+    ],theme:"grid",styles:ts,columnStyles:{0:{cellWidth:50}}}); y=doc.lastAutoTable.finalY+1;
+
+    var riskTxt = d.rischio==="no" ? "[ ] Si [X] No" : (d.rischio==="alto"||d.rischio==="medio_basso") ? "[X] Si [ ] No" : "[ ] Si [ ] No";
+    var riskLvl = d.rischio==="alto" ? "[X] Rischio alto: "+(d.rischioDesc||"") : d.rischio==="medio_basso" ? "[X] Rischio medio/basso: "+(d.rischioDesc||"") : "";
+    var STK2=["Cittadini e collettivita","Aziende e imprese","Enti locali o altre PA","Utenti interni"];
+    var sStr2 = STK2.map(function(s){ return ck(d.stakeholders,s)+" "+s; }).join("\n");
+
+    doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
+      [{content:"Rischio corruzione?",styles:{fontStyle:"bold",fillColor:hd,cellWidth:50}},{content:riskTxt,cellWidth:28},{content:riskLvl,colSpan:2}],
+      [{content:"Stakeholders\n(destinatari diretti)",styles:{fontStyle:"bold",fillColor:hd}},{content:sStr2,colSpan:3,styles:{fontSize:6.5}}],
+      [{content:"Deadline",styles:{fontStyle:"bold",fillColor:hd}},{content:d.deadline||"-",colSpan:3}],
+      [{content:"Importanza relativa\ndell'obiettivo e risultati attesi",styles:{fontStyle:"bold",fillColor:hd}},{content:d.importanza||"-",colSpan:3}],
+      [{content:"Risultato atteso",styles:{fontStyle:"bold",fillColor:hd}},{content:d.risultato||"-",colSpan:3}]
+    ],theme:"grid",styles:ts}); y=doc.lastAutoTable.finalY+2;
+
+    doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
+      [{content:"INDICATORE",styles:{fontStyle:"bold",fillColor:hd,cellWidth:28}},{content:d.ind||"-"},{content:"BASELINE",styles:{fontStyle:"bold",fillColor:hd,cellWidth:26}},{content:d.baseline||"-"},{content:"FONTE",styles:{fontStyle:"bold",fillColor:hd,cellWidth:18}},{content:d.fonte||"-"}],
+      [{content:"UM",styles:{fontStyle:"bold",fillColor:hd}},{content:d.um||"-"},{content:"Risultato atteso",styles:{fontStyle:"bold",fillColor:yc}},{content:d.risultato||"-",colSpan:3}],
+      [{content:"Formula",styles:{fontStyle:"bold",fillColor:hd}},{content:d.formula||"-",colSpan:5}]
+    ],theme:"grid",styles:ts}); y=doc.lastAutoTable.finalY+4;
+    doc.setFontSize(8); doc.setFont(undefined,"bold"); doc.setTextColor(0,51,102);
+    doc.text("Peso specifico ob. operativo "+(d.codice||"")+": "+(d.peso||"-")+"%",mx,y);
+  }
+
+  // Footer
+  doc.setDrawColor(170); doc.line(mx,H-8,mxR,H-8);
+  doc.setFontSize(6); doc.setFont(undefined,"normal"); doc.setTextColor(120);
+  doc.text("Regione Molise - Piano Performance Organizzativa 2025/2027 - DGR n. 149/2025",mx,H-4);
+  var pfx = isStr ? "STR" : "OPR";
+  var fname = "Scheda_"+pfx+"_"+sC.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".pdf";
+  console.log("Saving PDF:", fname);
+  doc.save(fname);
+  return true;
+};
+
+window._mkXLS = function(en){
+  console.log("_mkXLS called for:", en.serviceCode, en.type);
+  var wb = XLSX.utils.book_new();
+  var d = en.data;
+  var isStr = en.type==="strategic";
+  var pfx = isStr ? "STR" : "OPR";
+  var shn = isStr ? "Ob. Strategico" : "Ob. Operativo";
+  var hdr = [
+    ["REGIONE MOLISE - Servizio Supporto DG Giunta Regionale"],
+    ["Piano Performance 2025-2027 | DGR 149/2025"],[""],
+    ["Data", new Date(en.timestamp).toLocaleString("it-IT")],
+    ["Area", en.areaCode+" - "+en.areaName],
+    ["Servizio", en.serviceCode+" - "+en.serviceName],
+    ["Tipo", isStr ? "OB. STRATEGICO" : "OB. OPERATIVO"],[""]
+  ];
+  var rows;
+  if(isStr){
+    rows = hdr.concat([
+      ["OB. STRATEGICO"],["Codice",d.codice],["Descrizione",d.nome],["Peso %",d.peso],[""],
+      ["VALORE PUBBLICO"],["Impatto",(d.impatto||[]).join("; ")],["Efficacia",(d.efficacia||[]).join("; ")],
+      ["Efficienza",(d.efficienza||[]).join("; ")],["Salute",(d.salute||[]).join("; ")],[""],
+      ["DEFR",d.defr],["Missione",d.missione],["Trasversali",(d.trasversali||[]).join("; ")],
+      ["Stakeholders",(d.stakeholders||[]).join("; ")],
+      ["Deadline",d.deadlineType==="periodo"?d.deadlinePeriodo:(d.deadlineType||"-")],["Note",d.note],[""],
+      ["RISULTATO ATTESO"],["Finale",d.risultatoFinale],["2025",d.ris2025],["2026",d.ris2026],["2027",d.ris2027],[""],
+      ["INDICATORI","Compless.","2025","2026","2027"],
+      ["Indicatore",d.ind,d.indF2025,d.indF2026,d.indF2027],
+      ["UM",d.um,d.umF2025,d.umF2026,d.umF2027],
+      ["Formula",d.formula,d.formulaF2025,d.formulaF2026,d.formulaF2027],
+      ["Baseline",d.baseline,d.baselineF2025,d.baselineF2026,d.baselineF2027],
+      ["Fonte",d.fonte,d.fonteF2025,d.fonteF2026,d.fonteF2027]
+    ]);
+  } else {
+    rows = hdr.concat([
+      ["OB. OPERATIVO"],["Codice",d.codice],["Descrizione",d.nome],["Peso %",d.peso],
+      ["Ob. Strat. Rif.",d.stratRif],[""],
+      ["Rischio",d.rischio||"-"],["Descr. rischio",d.rischioDesc],[""],
+      ["Stakeholders",(d.stakeholders||[]).join("; ")],["Deadline",d.deadline],
+      ["Importanza",d.importanza],["Risultato",d.risultato],[""],
+      ["INDICATORI"],["Indicatore",d.ind],["UM",d.um],["Formula",d.formula],
+      ["Baseline",d.baseline],["Fonte",d.fonte]
+    ]);
+  }
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = isStr ? [{wch:28},{wch:42},{wch:28},{wch:28},{wch:28}] : [{wch:28},{wch:52}];
+  XLSX.utils.book_append_sheet(wb, ws, shn);
+  var fname = "Scheda_"+pfx+"_"+en.serviceCode.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".xlsx";
+  console.log("Saving XLS:", fname);
+  XLSX.writeFile(wb, fname);
+  return true;
+};
+
+// Called by archive buttons via data-id attribute
+window._archivePDF = function(id){
+  console.log("_archivePDF id:", id);
+  var found = null;
+  for(var i=0; i<window._SUBS.length; i++){
+    if(window._SUBS[i].id === id){ found = window._SUBS[i]; break; }
+  }
+  if(!found){ alert("Scheda non trovata: "+id); return; }
+  try{ window._mkPDF(found); }catch(e){ console.error("PDF Error:",e); alert("Errore PDF: "+e.message); }
+};
+window._archiveXLS = function(id){
+  console.log("_archiveXLS id:", id);
+  var found = null;
+  for(var i=0; i<window._SUBS.length; i++){
+    if(window._SUBS[i].id === id){ found = window._SUBS[i]; break; }
+  }
+  if(!found){ alert("Scheda non trovata: "+id); return; }
+  try{ window._mkXLS(found); }catch(e){ console.error("XLS Error:",e); alert("Errore XLS: "+e.message); }
+};
+window._archiveDel = function(id){
+  if(!confirm("Eliminare questa scheda?")) return;
+  window._SUBS = window._SUBS.filter(function(s){ return s.id !== id; });
+  window._saveSubs(window._SUBS);
+  // Force React re-render by dispatching custom event
+  window.dispatchEvent(new Event("subsChanged"));
+};
+window._exportAll = function(){
+  var subs = window._SUBS;
+  if(!subs.length){ alert("Nessun dato"); return; }
+  var wb = XLSX.utils.book_new();
+  var st = subs.filter(function(s){return s.type==="strategic"});
+  if(st.length){
+    var r = st.map(function(e){return{Data:new Date(e.timestamp).toLocaleString("it-IT"),Area:e.areaCode,Servizio:e.serviceCode+" - "+e.serviceName,Codice:e.data.codice,Descrizione:e.data.nome,Peso:e.data.peso}});
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(r), "Strategici");
+  }
+  var op = subs.filter(function(s){return s.type==="operative"});
+  if(op.length){
+    var r2 = op.map(function(e){return{Data:new Date(e.timestamp).toLocaleString("it-IT"),Area:e.areaCode,Servizio:e.serviceCode+" - "+e.serviceName,Codice:e.data.codice,Descrizione:e.data.nome,Peso:e.data.peso}});
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(r2), "Operativi");
+  }
+  XLSX.writeFile(wb, "Piano_Performance_"+new Date().toISOString().slice(0,10)+".xlsx");
+};
+
+
+// Event delegation for archive buttons (bypasses all React/closure issues)
+document.addEventListener("click", function(evt){
+  var btn = evt.target;
+  if(!btn.dataset || !btn.dataset.act || !btn.dataset.eid) return;
+  var act = btn.dataset.act;
+  var eid = btn.dataset.eid;
+  console.log("Archive click:", act, eid);
+  if(act === "pdf") window._archivePDF(eid);
+  else if(act === "xls") window._archiveXLS(eid);
+  else if(act === "del") window._archiveDel(eid);
+});
+
+// Archive buttons use native onclick with global functions
+// This completely bypasses React closure issues
+
+var h = React.createElement;
+var useState = React.useState;
+var useEffect = React.useEffect;
+var useRef = React.useRef;
+
+var AREAS = [
+  {code:"A",name:"Servizi Autonomi Presidenza",svcs:[{code:"A.1",name:"Gabinetto Presidente",obj:["A.1.1"]},{code:"A.2",name:"Autorita di Audit",obj:["A.2.1","A.2.2"]},{code:"A.3",name:"Centrale Unica Committenza",obj:["A.3.1"]},{code:"A.4",name:"Avvocatura Regionale",obj:["A.4.1"]},{code:"A.5",name:"Rendicontazione e Vigilanza",obj:["A.5.1","A.5.2"]}]},
+  {code:"DG",name:"Direzione Generale Giunta",svcs:[{code:"DG.0",name:"Direzione Generale",obj:["DG.0.1"]},{code:"DG.1",name:"Supporto DG",obj:["DG.1.1"]},{code:"DG.2",name:"Risorse Umane",obj:["DG.2.1","DG.2.2","DG.2.3"]},{code:"DG.3",name:"Segreteria Giunta",obj:["DG.3.1"]}]},
+  {code:"I",name:"Area Prima",svcs:[{code:"I.1",name:"Competitivita Sistemi Produttivi",obj:["I.1.1","I.1.2"]},{code:"I.2",name:"Tutela Ambientale",obj:["I.2.1"]},{code:"I.3",name:"Politiche Energetiche",obj:["I.3.1"]},{code:"I.4",name:"Protezione Civile",obj:["I.4.1","I.4.2"]},{code:"I.5",name:"Partecipazioni Regionali",obj:["I.5.1"]}]},
+  {code:"II",name:"Area Seconda",svcs:[{code:"II.1",name:"Montagna e Foreste",obj:["II.1.1"]},{code:"II.2",name:"Politiche Europee Agricoltura",obj:["II.2.1"]},{code:"II.3",name:"Economia Territorio",obj:["II.3.1","II.3.2","II.3.3","II.3.4"]},{code:"II.4",name:"Politiche Culturali e Turismo",obj:["II.4.1","II.4.2","II.4.3","II.4.4"]},{code:"II.5",name:"Sistemi Informativi",obj:["II.5.1"]}]},
+  {code:"III",name:"Area Terza",svcs:[{code:"III.1",name:"Pianificazione Territoriale",obj:["III.1.1"]},{code:"III.2",name:"Geologico",obj:["III.2.1","III.2.2"]},{code:"III.3",name:"Infrastrutture e LL.PP.",obj:["III.3.1"]},{code:"III.4",name:"Mobilita",obj:["III.4.1"]},{code:"III.5",name:"Difesa Suolo",obj:["III.5.1"]}]},
+  {code:"IV",name:"Area Quarta",svcs:[{code:"IV.1",name:"Politiche Occupazione",obj:["IV.1.1","IV.1.2"]},{code:"IV.2",name:"Politiche Sociali",obj:["IV.2.1","IV.2.2","IV.2.3"]},{code:"IV.3",name:"Istruzione e Formazione",obj:["IV.3.1","IV.3.2"]},{code:"IV.4",name:"Risorse Finanziarie",obj:["IV.4.1"]},{code:"IV.5",name:"Datore di Lavoro",obj:["IV.5.1","IV.5.2"]},{code:"IV.6",name:"Logistica e Patrimonio",obj:["IV.6.1"]}]},
+  {code:"V",name:"Area Quinta",svcs:[{code:"V.1",name:"Coordinamento FESR-FSE",obj:["V.1.1"]},{code:"V.2",name:"Supporto ADG POR",obj:["V.2.1","V.2.2"]},{code:"V.3",name:"Fondo Sviluppo Coesione",obj:["V.3.1"]},{code:"V.5",name:"Coordinamento PNRR",obj:["V.5.1"]},{code:"V.6",name:"Riforme Istituzionali",obj:["V.6.1"]}]},
+  {code:"G",name:"DG Salute",svcs:[{code:"G.0",name:"DG Salute",obj:["G.0.1"]},{code:"G.1",name:"Supporto DG Salute",obj:["G.1.1"]},{code:"G.2",name:"Risorse Umane SSR",obj:["G.2.1"]},{code:"G.3",name:"Autorizzazione Accreditamento",obj:["G.3.1"]},{code:"G.4",name:"Finanziamento Socio-Sanitario",obj:["G.4.1"]},{code:"G.5",name:"Controllo Gestione",obj:["G.5.1"]},{code:"G.6",name:"Programmazione Economica SSR",obj:["G.6.1"]},{code:"G.8",name:"Rete Ospedaliera",obj:["G.8.1"]},{code:"G.9",name:"Prevenzione Veterinaria",obj:["G.9.1"]}]},
+  {code:"FS",name:"Funzioni Specialistiche",svcs:[{code:"FS.01",name:"Prevenzione Corruzione",obj:["FS.01.1","FS.01.2"]},{code:"FS.03",name:"Antiriciclaggio",obj:["FS.03.1"]}]}
+];
+
+var IMP=["Impatto Sociale","Impatto Economico","Impatto Ambientale","Impatto Sanitario"];
+var EFF=["Quantitativa Erogata","Quantitativa Fruita","Qualitativa Percepita","Qualitativa Erogata"];
+var EFZ=["Efficienza Finanziaria","Efficienza Gestionale","Efficienza Temporale","Efficienza Produttiva"];
+var SAL=["Organizzativa","Agile","Formativa","Professionale"];
+var TRV=["Rafforzamento capacita","Digitalizzazione","Contenimento spesa","Soddisfazione utenti","Trasparenza","Conciliazione vita/lavoro","Modernizzazione","Pari opportunita","Smaltimento arretrato"];
+var STK=["Cittadini e collettivita","Aziende e imprese","Enti locali o altre PA","Utenti interni"];
+
+function eS(){return{codice:"",nome:"",peso:"",impatto:[],efficacia:[],efficienza:[],salute:[],defr:"",missione:"",trasversali:[],stakeholders:[],stakeAltro:"",deadlineType:"",deadlinePeriodo:"",note:"",risultatoFinale:"",ris2025:"",ris2026:"",ris2027:"",ind:"",um:"",formula:"",baseline:"",fonte:"",indF2025:"",umF2025:"",formulaF2025:"",baselineF2025:"",fonteF2025:"",indF2026:"",umF2026:"",formulaF2026:"",baselineF2026:"",fonteF2026:"",indF2027:"",umF2027:"",formulaF2027:"",baselineF2027:"",fonteF2027:""}}
+function eO(){return{codice:"",nome:"",peso:"",stratRif:"",rischio:"",rischioDesc:"",stakeholders:[],stakeAltro:"",deadline:"",importanza:"",risultato:"",ind:"",um:"",formula:"",baseline:"",fonte:""}}
+function hasFilled(d){return d && d.codice && d.nome}
+
+var IS = {width:"100%",padding:"9px 11px",border:"1.5px solid #c5ccd4",borderRadius:4,fontSize:14,fontFamily:"Titillium Web,sans-serif",background:"#fff",boxSizing:"border-box",outline:"none"};
+var TS = Object.assign({},IS,{minHeight:68,resize:"vertical"});
+
+// Simple input field component
+function F(p){
+  return h("div",{style:{marginBottom:12}},
+    h("label",{style:{display:"block",fontWeight:600,fontSize:13,color:"#17324d",marginBottom:3}},p.l,p.r?h("span",{style:{color:"red"}}," *"):null),
+    p.children
+  );
+}
+
+// Checkbox group
+function CG(p){
+  return h("div",{style:{display:"grid",gridTemplateColumns:"repeat("+(p.c||2)+",1fr)",gap:"4px 12px"}},
+    p.o.map(function(x){
+      return h("label",{key:x,style:{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:13}},
+        h("input",{type:"checkbox",checked:p.v.indexOf(x)>=0,onChange:function(){
+          p.fn(p.v.indexOf(x)>=0 ? p.v.filter(function(z){return z!==x}) : p.v.concat([x]));
+        },style:{accentColor:"#0066cc"}}),
+        x
+      );
+    })
+  );
+}
+
+// Strategic form
+function SF(p){
+  var d=p.d, u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
+  return h("div",null,
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+      h(F,{l:"Codice Ob. Strategico",r:1},h("input",{style:IS,value:d.codice,onChange:u("codice")})),
+      h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",value:d.peso,onChange:u("peso")}))
+    ),
+    h(F,{l:"Nome/Descrizione",r:1},h("textarea",{style:TS,value:d.nome,onChange:u("nome")})),
+    h("div",{className:"cd",style:{padding:14,marginBottom:12}},
+      h("div",{style:{fontWeight:700,fontSize:13,color:"#003366",marginBottom:8,borderBottom:"2px solid #003366",paddingBottom:5}},"VALORE PUBBLICO"),
+      h(F,{l:"Impatto"},h(CG,{o:IMP,v:d.impatto,fn:u("impatto"),c:4})),
+      h(F,{l:"Efficacia"},h(CG,{o:EFF,v:d.efficacia,fn:u("efficacia"),c:4})),
+      h(F,{l:"Efficienza"},h(CG,{o:EFZ,v:d.efficienza,fn:u("efficienza"),c:4})),
+      h(F,{l:"Salute Amm."},h(CG,{o:SAL,v:d.salute,fn:u("salute"),c:4}))
+    ),
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+      h(F,{l:"DEFR"},h("select",{style:IS,value:d.defr,onChange:u("defr")},h("option",{value:""},"-"),h("option",{value:"SI"},"Si"),h("option",{value:"NO"},"No"))),
+      h(F,{l:"Missione/Programma"},h("input",{style:IS,value:d.missione,onChange:u("missione")}))
+    ),
+    h(F,{l:"Ob. Trasversali"},h(CG,{o:TRV,v:d.trasversali,fn:u("trasversali"),c:1})),
+    h(F,{l:"Stakeholders"},h(CG,{o:STK,v:d.stakeholders,fn:u("stakeholders"),c:2})),
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+      h(F,{l:"Deadline"},h("select",{style:IS,value:d.deadlineType,onChange:u("deadlineType")},h("option",{value:""},"-"),h("option",{value:"fine_mandato"},"Fine mandato"),h("option",{value:"periodo"},"Periodo"))),
+      d.deadlineType==="periodo"?h(F,{l:"Periodo"},h("input",{style:IS,value:d.deadlinePeriodo,onChange:u("deadlinePeriodo")})):null
+    ),
+    h(F,{l:"Note"},h("textarea",{style:TS,value:d.note,onChange:u("note")})),
+    h("div",{className:"cd",style:{padding:14,marginBottom:12,borderLeft:"3px solid #b8860b"}},
+      h("div",{style:{fontWeight:700,color:"#b8860b",marginBottom:8}},"RISULTATO ATTESO"),
+      h(F,{l:"Risultato Finale",r:1},h("textarea",{style:TS,value:d.risultatoFinale,onChange:u("risultatoFinale")})),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
+        h(F,{l:"2025"},h("textarea",{style:Object.assign({},TS,{minHeight:50}),value:d.ris2025,onChange:u("ris2025")})),
+        h(F,{l:"2026"},h("textarea",{style:Object.assign({},TS,{minHeight:50}),value:d.ris2026,onChange:u("ris2026")})),
+        h(F,{l:"2027"},h("textarea",{style:Object.assign({},TS,{minHeight:50}),value:d.ris2027,onChange:u("ris2027")}))
+      )
+    ),
+    h("div",{className:"cd",style:{padding:14,borderLeft:"3px solid #008758"}},
+      h("div",{style:{fontWeight:700,color:"#008758",marginBottom:8}},"INDICATORI"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
+        h(F,{l:"Indicatore"},h("input",{style:IS,value:d.ind,onChange:u("ind")})),
+        h(F,{l:"UM"},h("input",{style:IS,value:d.um,onChange:u("um")})),
+        h(F,{l:"Formula"},h("input",{style:IS,value:d.formula,onChange:u("formula")})),
+        h(F,{l:"Baseline"},h("input",{style:IS,value:d.baseline,onChange:u("baseline")}))
+      ),
+      h(F,{l:"Fonte"},h("input",{style:IS,value:d.fonte,onChange:u("fonte")}))
+    )
+  );
+}
+
+// Operative form
+function OF(p){
+  var d=p.d, u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
+  return h("div",null,
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}},
+      h(F,{l:"Codice Ob. Operativo",r:1},h("input",{style:IS,value:d.codice,onChange:u("codice")})),
+      h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",value:d.peso,onChange:u("peso")})),
+      h(F,{l:"Ob. Strat. Rif."},h("select",{style:IS,value:d.stratRif,onChange:u("stratRif")},
+        [h("option",{key:"_",value:""},"-")].concat((p.opts||[]).map(function(x){return h("option",{key:x,value:x},x)}))
+      ))
+    ),
+    h(F,{l:"Nome/Descrizione",r:1},h("textarea",{style:TS,value:d.nome,onChange:u("nome")})),
+    h(F,{l:"Rischio corruzione?"},h("select",{style:IS,value:d.rischio,onChange:u("rischio")},h("option",{value:""},"-"),h("option",{value:"no"},"No"),h("option",{value:"alto"},"Si-Alto"),h("option",{value:"medio_basso"},"Si-Medio/Basso"))),
+    d.rischio&&d.rischio!=="no"?h(F,{l:"Descr. rischio"},h("textarea",{style:Object.assign({},TS,{minHeight:50}),value:d.rischioDesc,onChange:u("rischioDesc")})):null,
+    h(F,{l:"Stakeholders"},h(CG,{o:STK,v:d.stakeholders,fn:u("stakeholders"),c:2})),
+    h(F,{l:"Deadline",r:1},h("input",{style:IS,type:"date",value:d.deadline,onChange:u("deadline")})),
+    h(F,{l:"Importanza e risultati attesi"},h("textarea",{style:TS,value:d.importanza,onChange:u("importanza")})),
+    h(F,{l:"Risultato atteso"},h("textarea",{style:TS,value:d.risultato,onChange:u("risultato")})),
+    h("div",{className:"cd",style:{padding:14,borderLeft:"3px solid #008758"}},
+      h("div",{style:{fontWeight:700,color:"#008758",marginBottom:8}},"INDICATORI"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
+        h(F,{l:"Indicatore"},h("input",{style:IS,value:d.ind,onChange:u("ind")})),
+        h(F,{l:"UM"},h("input",{style:IS,value:d.um,onChange:u("um")})),
+        h(F,{l:"Formula"},h("input",{style:IS,value:d.formula,onChange:u("formula")})),
+        h(F,{l:"Baseline"},h("input",{style:IS,value:d.baseline,onChange:u("baseline")}))
+      ),
+      h(F,{l:"Fonte"},h("input",{style:IS,value:d.fonte,onChange:u("fonte")}))
+    )
+  );
+}
+
+// Dashboard BI completa
+function Dash(p){
+  var s=p.subs;
+  var nS=s.filter(function(x){return x.type==="strategic"}).length;
+  var nO=s.filter(function(x){return x.type==="operative"}).length;
+  var strs=s.filter(function(x){return x.type==="strategic"});
+  var oprs=s.filter(function(x){return x.type==="operative"});
+
+  // Area counts
+  var ac={};s.forEach(function(x){ac[x.areaCode]=(ac[x.areaCode]||0)+1});
+  // Service counts
+  var sc={};s.forEach(function(x){sc[x.serviceCode]=(sc[x.serviceCode]||0)+1});
+  var allSvc=[];AREAS.forEach(function(a){a.svcs.forEach(function(x){allSvc.push(x.code)})});
+  var covSet={};s.forEach(function(x){covSet[x.serviceCode]=true});
+  var cvp=allSvc.length?Math.round(Object.keys(covSet).length/allSvc.length*100):0;
+
+  // Impatto coverage (strategic)
+  var impC={};IMP.forEach(function(i){impC[i]=0});
+  strs.forEach(function(x){(x.data.impatto||[]).forEach(function(i){if(impC[i]!==undefined)impC[i]++})});
+  // Efficacia
+  var effC={};EFF.forEach(function(i){effC[i]=0});
+  strs.forEach(function(x){(x.data.efficacia||[]).forEach(function(i){if(effC[i]!==undefined)effC[i]++})});
+  // Efficienza
+  var efzC={};EFZ.forEach(function(i){efzC[i]=0});
+  strs.forEach(function(x){(x.data.efficienza||[]).forEach(function(i){if(efzC[i]!==undefined)efzC[i]++})});
+  // Salute
+  var salC={};SAL.forEach(function(i){salC[i]=0});
+  strs.forEach(function(x){(x.data.salute||[]).forEach(function(i){if(salC[i]!==undefined)salC[i]++})});
+  // Trasversali
+  var trvC={};TRV.forEach(function(t){trvC[t]=0});
+  strs.forEach(function(x){(x.data.trasversali||[]).forEach(function(t){if(trvC[t]!==undefined)trvC[t]++})});
+  // Stakeholders (all)
+  var stkC={};STK.forEach(function(t){stkC[t]=0});
+  s.forEach(function(x){(x.data.stakeholders||[]).forEach(function(t){if(stkC[t]!==undefined)stkC[t]++})});
+  // DEFR
+  var defrSI=strs.filter(function(x){return x.data.defr==="SI"}).length;
+  var defrNO=strs.filter(function(x){return x.data.defr==="NO"}).length;
+  // Rischio (operative)
+  var rNo=0,rAlto=0,rMB=0,rND=0;
+  oprs.forEach(function(x){var r=x.data.rischio;if(r==="no")rNo++;else if(r==="alto")rAlto++;else if(r==="medio_basso")rMB++;else rND++});
+  // Peso medio
+  var pesoS=0,pesoO=0,cntPS=0,cntPO=0;
+  strs.forEach(function(x){var p=parseFloat(x.data.peso);if(!isNaN(p)){pesoS+=p;cntPS++}});
+  oprs.forEach(function(x){var p=parseFloat(x.data.peso);if(!isNaN(p)){pesoO+=p;cntPO++}});
+  var avgPS=cntPS?Math.round(pesoS/cntPS):0;
+  var avgPO=cntPO?Math.round(pesoO/cntPO):0;
+
+  // Helper for bar row
+  var barRow=function(label,val,max,color){
+    var pct=max>0?Math.round(val/max*100):0;
+    return h("div",{key:label,style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
+      h("div",{style:{width:180,fontSize:12,color:"#17324d",flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},label),
+      h("div",{style:{flex:1,background:"#e8ecf1",borderRadius:3,height:18,position:"relative"}},
+        h("div",{style:{width:pct+"%",background:color,borderRadius:3,height:18,minWidth:val>0?2:0}}),
+        h("span",{style:{position:"absolute",right:6,top:1,fontSize:11,fontWeight:600,color:"#17324d"}},val)
+      )
+    );
+  };
+
+  // Helper for KPI card
+  var kpi=function(val,label,color){
+    return h("div",{className:"kc"},
+      h("div",{style:{fontSize:28,fontWeight:700,color:color||"#003366"}},val),
+      h("div",{style:{fontSize:10,color:"#5c6f82",fontWeight:600,textTransform:"uppercase",letterSpacing:".04em"}},label)
+    );
+  };
+
+  // Section header
+  var secH=function(title,icon){
+    return h("div",{style:{fontWeight:700,fontSize:14,color:"#003366",marginBottom:10,paddingBottom:6,borderBottom:"2px solid #003366",display:"flex",alignItems:"center",gap:6}},icon||null,title);
+  };
+
+  // Table helper
+  var tbl=function(headers,rows){
+    return h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:12}},
+      h("thead",null,h("tr",null,headers.map(function(hdr,i){
+        return h("th",{key:i,style:{padding:"6px 8px",background:"#003366",color:"#fff",textAlign:"left",fontSize:11,fontWeight:600}},hdr);
+      }))),
+      h("tbody",null,rows.map(function(row,ri){
+        return h("tr",{key:ri,style:{background:ri%2===0?"#fff":"#f8f9fa"}},row.map(function(cell,ci){
+          return h("td",{key:ci,style:{padding:"5px 8px",borderBottom:"1px solid #e8ecf1",fontSize:12}},cell);
+        }));
+      }))
+    );
+  };
+
+  var maxImp=Math.max.apply(null,IMP.map(function(i){return impC[i]}));
+  var maxTrv=Math.max.apply(null,TRV.map(function(t){return trvC[t]}));
+  var maxStk=Math.max.apply(null,STK.map(function(t){return stkC[t]}));
+
+  return h("div",null,
+    // ── KPI ROW ──
+    h("div",{style:{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginBottom:20}},
+      kpi(s.length,"Schede Totali","#003366"),
+      kpi(nS,"Ob. Strategici","#0066cc"),
+      kpi(nO,"Ob. Operativi","#008758"),
+      kpi(Object.keys(covSet).length+"/"+allSvc.length,"Servizi Coperti","#b8860b"),
+      kpi(cvp+"%","Copertura",cvp>=75?"#008758":"#d9364f"),
+      kpi(avgPS+"%/"+avgPO+"%","Peso Medio STR/OPR","#5c6f82")
+    ),
+
+    // ── ROW 1: Area + Tipo + DEFR ──
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:14}},
+      h("div",{className:"cd",style:{padding:14}},
+        secH("Schede per Area"),
+        Object.keys(ac).map(function(k){return barRow(k,ac[k],s.length,"#003366")})
+      ),
+      h("div",{className:"cd",style:{padding:14}},
+        secH("Distribuzione per Tipo"),
+        h("div",{style:{display:"flex",gap:20,justifyContent:"center",padding:"20px 0"}},
+          h("div",{style:{textAlign:"center"}},
+            h("div",{style:{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#0066cc,#004d99)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px"}},
+              h("span",{style:{color:"#fff",fontSize:24,fontWeight:700}},nS)
+            ),
+            h("div",{style:{fontSize:12,fontWeight:600,color:"#0066cc"}},"Strategici")
+          ),
+          h("div",{style:{textAlign:"center"}},
+            h("div",{style:{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#008758,#006b45)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px"}},
+              h("span",{style:{color:"#fff",fontSize:24,fontWeight:700}},nO)
+            ),
+            h("div",{style:{fontSize:12,fontWeight:600,color:"#008758"}},"Operativi")
+          )
+        )
+      ),
+      h("div",{className:"cd",style:{padding:14}},
+        secH("DEFR (Strategici)"),
+        nS>0?h("div",null,
+          barRow("[X] Previsto",defrSI,nS,"#008758"),
+          barRow("[ ] Non previsto",defrNO,nS,"#5c6f82"),
+          barRow("N.D.",nS-defrSI-defrNO,nS,"#d9dadb")
+        ):h("div",{style:{color:"#5c6f82",textAlign:"center",padding:20}},"Nessun obiettivo strategico")
+      )
+    ),
+
+    // ── ROW 2: Impatto + Efficacia/Efficienza + Salute ──
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:14}},
+      h("div",{className:"cd",style:{padding:14}},
+        secH("Impatto (Strategici)"),
+        IMP.map(function(i){return barRow(i.replace("Impatto ",""),impC[i],maxImp||1,"#0066cc")})
+      ),
+      h("div",{className:"cd",style:{padding:14}},
+        secH("Efficacia / Efficienza"),
+        h("div",{style:{fontSize:11,fontWeight:600,color:"#5c6f82",marginBottom:4}},"EFFICACIA"),
+        EFF.map(function(i){return barRow(i,effC[i],nS||1,"#008758")}),
+        h("div",{style:{fontSize:11,fontWeight:600,color:"#5c6f82",marginBottom:4,marginTop:8}},"EFFICIENZA"),
+        EFZ.map(function(i){return barRow(i,efzC[i],nS||1,"#b8860b")})
+      ),
+      h("div",{className:"cd",style:{padding:14}},
+        secH("Salute Amministrazione"),
+        SAL.map(function(i){return barRow(i,salC[i],nS||1,"#9b59b6")}),
+        h("div",{style:{marginTop:16}}),
+        secH("Rischio Corruzione (Operativi)"),
+        nO>0?h("div",null,
+          barRow("Nessun rischio",rNo,nO,"#008758"),
+          barRow("Rischio alto",rAlto,nO,"#d9364f"),
+          barRow("Rischio medio/basso",rMB,nO,"#e67e22"),
+          barRow("Non indicato",rND,nO,"#d9dadb")
+        ):h("div",{style:{color:"#5c6f82",fontSize:12}},"Nessun operativo")
+      )
+    ),
+
+    // ── ROW 3: Trasversali + Stakeholders ──
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}},
+      h("div",{className:"cd",style:{padding:14}},
+        secH("Obiettivi Trasversali (Strategici)"),
+        TRV.map(function(t){return barRow(t,trvC[t],maxTrv||1,"#b8860b")})
+      ),
+      h("div",{className:"cd",style:{padding:14}},
+        secH("Stakeholders Coinvolti"),
+        STK.map(function(t){return barRow(t,stkC[t],maxStk||1,"#003366")})
+      )
+    ),
+
+    // ── ROW 4: Dettaglio servizi ──
+    h("div",{className:"cd",style:{padding:14,marginBottom:14}},
+      secH("Dettaglio per Servizio"),
+      tbl(["Servizio","Tipo","Codice Ob.","Descrizione","Peso %","Indicatore","UM","Deadline"],
+        s.map(function(e){
+          return [
+            e.serviceCode+" - "+e.serviceName,
+            e.type==="strategic"?"STR":"OPR",
+            e.data.codice||"-",
+            (e.data.nome||"-").substring(0,60),
+            (e.data.peso||"-")+"%",
+            e.data.ind||"-",
+            e.data.um||"-",
+            e.type==="strategic"?(e.data.deadlineType==="periodo"?e.data.deadlinePeriodo:e.data.deadlineType||"-"):(e.data.deadline||"-")
+          ];
+        })
+      )
+    ),
+
+    // ── ROW 5: Indicatori dettagliati strategici ──
+    nS>0?h("div",{className:"cd",style:{padding:14,marginBottom:14}},
+      secH("Indicatori Obiettivi Strategici"),
+      tbl(["Servizio","Codice","Indicatore","UM","Baseline","Fonte","Ris. 2025","Ris. 2026","Ris. 2027"],
+        strs.map(function(e){
+          var d=e.data;
+          return [
+            e.serviceCode,d.codice||"-",d.ind||"-",d.um||"-",d.baseline||"-",d.fonte||"-",
+            d.ris2025||"-",d.ris2026||"-",d.ris2027||"-"
+          ];
+        })
+      )
+    ):null,
+
+    // ── ROW 6: Indicatori dettagliati operativi ──
+    nO>0?h("div",{className:"cd",style:{padding:14,marginBottom:14}},
+      secH("Indicatori Obiettivi Operativi"),
+      tbl(["Servizio","Codice","Strat. Rif.","Indicatore","UM","Baseline","Fonte","Risultato","Rischio"],
+        oprs.map(function(e){
+          var d=e.data;
+          return [
+            e.serviceCode,d.codice||"-",d.stratRif||"-",d.ind||"-",d.um||"-",d.baseline||"-",d.fonte||"-",
+            d.risultato||"-",d.rischio||"-"
+          ];
+        })
+      )
+    ):null,
+
+    // ── ROW 7: Timeline ──
+    h("div",{className:"cd",style:{padding:14}},
+      secH("Cronologia Compilazioni"),
+      tbl(["Data","Tipo","Servizio","Codice","Descrizione","Compilatore"],
+        s.slice().reverse().map(function(e){
+          return [
+            new Date(e.timestamp).toLocaleString("it-IT"),
+            e.type==="strategic"?"STR":"OPR",
+            e.serviceCode+" - "+e.serviceName,
+            e.data.codice||"-",
+            (e.data.nome||"-").substring(0,50),
+            "Servizio "+e.serviceCode
+          ];
+        })
+      )
+    )
+  );
+}
+
+// ═══ MAIN APP ═══
+function App(){
+  var vs=useState("select");var v=vs[0];var setV=vs[1];
+  var ss=useState(null);var svc=ss[0];var setSvc=ss[1];
+  var fs=useState("strategic");var ft=fs[0];var setFt=fs[1];
+  var ds=useState(eS());var sD=ds[0];var setSD=ds[1];
+  var os=useState(eO());var oD=os[0];var setOD=os[1];
+  var bs=useState(function(){var d=window._loadSubs();window._SUBS=d;return d});var subs=bs[0];var setSubs=bs[1];
+  var ts=useState(null);var toast=ts[0];var setToast=ts[1];
+  var xs=useState("");var search=xs[0];var setSearch=xs[1];
+  var ls=useState(false);var logged=ls[0];var setLogged=ls[1];
+  var us=useState("");var lU=us[0];var setLU=us[1];
+  var ps=useState("");var lP=ps[0];var setLP=ps[1];
+  var es=useState("");var lE=es[0];var setLE=es[1];
+  var as=useState("dashboard");var aTab=as[0];var setATab=as[1];
+
+  // Listen for subsChanged events (from global delete function)
+  useEffect(function(){
+    var handler=function(){setSubs(window._SUBS.slice())};
+    window.addEventListener("subsChanged",handler);
+    return function(){window.removeEventListener("subsChanged",handler)};
+  },[]);
+
+  var flash=function(m,t){setToast({m:m,t:t||"ok"});setTimeout(function(){setToast(null)},3000)};
+
+  var findArea=function(code){
+    for(var i=0;i<AREAS.length;i++){for(var j=0;j<AREAS[i].svcs.length;j++){if(AREAS[i].svcs[j].code===code)return AREAS[i]}}return null;
+  };
+
+  var selSvc=function(s){setSvc(s);setSD(eS());setOD(eO());setFt("strategic");setV("form");window.scrollTo(0,0)};
+
+  var submit=function(){
+    var d = ft==="strategic" ? sD : oD;
+    if(!hasFilled(d)){flash("Compila Codice e Descrizione","err");return}
+    var a=findArea(svc.code);
+    var en={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),timestamp:new Date().toISOString(),serviceCode:svc.code,serviceName:svc.name,areaCode:a?a.code:"",areaName:a?a.name:"",type:ft,data:Object.assign({},d)};
+    var up=subs.concat([en]);
+    setSubs(up);window._saveSubs(up);
+    // Download with staggered timing
+    try{window._mkPDF(en)}catch(e){console.error(e);alert("Errore PDF: "+e.message)}
+    setTimeout(function(){try{window._mkXLS(en)}catch(e){console.error(e);alert("Errore XLS: "+e.message)}},1200);
+    flash("Scheda "+(ft==="strategic"?"STRATEGICA":"OPERATIVA")+" salvata! PDF + XLS in download...");
+    if(ft==="strategic"){setSD(eS())}else{setOD(eO())}
+    window.scrollTo(0,0);
+  };
+
+  var doLogin=function(){if(lU==="admin"&&lP==="Molise2025!"){setLogged(true);setLE("");setV("archive")}else setLE("Credenziali non valide")};
+
+  var filtered=search.trim()?AREAS.map(function(a){return Object.assign({},a,{svcs:a.svcs.filter(function(s){return s.code.toLowerCase().indexOf(search.toLowerCase())>=0||s.name.toLowerCase().indexOf(search.toLowerCase())>=0})})}).filter(function(a){return a.svcs.length>0}):AREAS;
+
+  var nS=subs.filter(function(x){return x.type==="strategic"}).length;
+  var nO=subs.filter(function(x){return x.type==="operative"}).length;
+
+  // Build archive list with NATIVE onclick (not React onClick)
+  // This is the key fix - we use dangerouslySetInnerHTML for archive buttons
+  var archiveListHTML = "";
+  if(subs.length){
+    var rev = subs.slice().reverse();
+    for(var i=0; i<rev.length; i++){
+      var e = rev[i];
+      var typeLabel = e.type==="strategic" ? "STR" : "OPR";
+      var typeBg = e.type==="strategic" ? "#e8f0fe" : "#e6f4ed";
+      var typeColor = e.type==="strategic" ? "#0066cc" : "#008758";
+      archiveListHTML += '<div class="cd" style="padding:11px 14px;margin-bottom:7px">';
+      archiveListHTML += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">';
+      archiveListHTML += '<div style="flex:1;min-width:0">';
+      archiveListHTML += '<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap">';
+      archiveListHTML += '<span style="padding:2px 6px;border-radius:3px;font-size:11px;font-weight:700;background:'+typeBg+';color:'+typeColor+'">'+typeLabel+'</span>';
+      archiveListHTML += '<span style="color:#003366;font-weight:700;font-size:12px;font-family:monospace">'+e.serviceCode+'</span>';
+      archiveListHTML += '<span style="color:#5c6f82;font-size:11px">'+new Date(e.timestamp).toLocaleString("it-IT")+'</span>';
+      archiveListHTML += '</div>';
+      archiveListHTML += '<div style="color:#17324d;font-weight:600;font-size:13px">'+e.serviceName+'</div>';
+      if(e.data.nome) archiveListHTML += '<div style="color:#5c6f82;font-size:12px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.data.codice?e.data.codice+' - ':'')+e.data.nome+'</div>';
+      archiveListHTML += '</div>';
+      archiveListHTML += '<div style="display:flex;gap:3px;flex-shrink:0">';
+      archiveListHTML += '<button data-act="pdf" data-eid="'+e.id+'" style="padding:4px 10px;font-size:11px;font-weight:600;background:#fff;color:#0066cc;border:1.5px solid #0066cc;border-radius:4px;cursor:pointer">PDF</button>';
+      archiveListHTML += '<button data-act="xls" data-eid="'+e.id+'" style="padding:4px 10px;font-size:11px;font-weight:600;background:#fff;color:#008758;border:1.5px solid #008758;border-radius:4px;cursor:pointer">XLS</button>';
+      archiveListHTML += '<button data-act="del" data-eid="'+e.id+'" style="padding:4px 10px;font-size:11px;background:none;border:1px solid #e8ecf1;border-radius:3px;color:#b0bec5;cursor:pointer">x</button>';
+      archiveListHTML += '</div></div></div>';
+    }
+  }
+
+  return h("div",{style:{minHeight:"100vh",display:"flex",flexDirection:"column"}},
+    // Toast
+    toast?h("div",{style:{position:"fixed",top:14,right:14,zIndex:9999,padding:"12px 22px",borderRadius:4,background:toast.t==="err"?"#d9364f":"#008758",color:"#fff",fontWeight:600,fontSize:14,boxShadow:"0 6px 20px rgba(0,0,0,.2)"}},toast.m):null,
+
+    // Header
+    h("header",{style:{background:"#003366",borderBottom:"3px solid #c8a84c",position:"sticky",top:0,zIndex:100}},
+      h("div",{style:{maxWidth:1100,margin:"0 auto",padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",height:62,flexWrap:"wrap",gap:6}},
+        h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+          h("img",{src:window.LOGO_SM,style:{width:40,height:40,borderRadius:3}}),
+          h("div",null,
+            h("div",{style:{color:"#c8a84c",fontWeight:700,fontSize:14}},"REGIONE MOLISE"),
+            h("div",{style:{color:"rgba(255,255,255,.65)",fontSize:11}},"Servizio Supporto Direttore Generale della Giunta Regionale"),
+            h("div",{style:{color:"rgba(255,255,255,.35)",fontSize:10}},"Piano Performance Organizzativa 2025-2027")
+          )
+        ),
+        h("nav",{style:{display:"flex",gap:4,alignItems:"center"}},
+          h("button",{onClick:function(){setV("select")},style:{padding:"7px 14px",borderRadius:3,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:v==="select"||v==="form"?"rgba(200,168,76,.2)":"transparent",color:v==="select"||v==="form"?"#c8a84c":"rgba(255,255,255,.5)"}},"Compilazione"),
+          h("button",{onClick:function(){if(logged)setV("archive");else setV("login")},style:{padding:"7px 14px",borderRadius:3,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:v==="archive"||v==="login"?"rgba(200,168,76,.2)":"transparent",color:v==="archive"||v==="login"?"#c8a84c":"rgba(255,255,255,.5)"}},logged?"Archivio ("+subs.length+")":"Archivio"),
+          logged?h("button",{onClick:function(){setLogged(false);setV("select")},style:{padding:"5px 10px",borderRadius:3,border:"1px solid rgba(255,255,255,.2)",cursor:"pointer",fontSize:11,background:"transparent",color:"rgba(255,255,255,.4)"}},"Esci"):null
+        )
+      )
+    ),
+
+    // Main
+    h("main",{style:{maxWidth:1060,margin:"0 auto",padding:"20px 14px 40px",flex:1,width:"100%"}},
+
+      // LOGIN
+      v==="login"&&!logged?h("div",{style:{maxWidth:380,margin:"50px auto"}},
+        h("div",{className:"cd",style:{padding:28}},
+          h("div",{style:{textAlign:"center",marginBottom:18}},
+            h("img",{src:window.LOGO_SM,style:{width:48,height:48,margin:"0 auto 8px",display:"block"}}),
+            h("h2",{style:{fontSize:18,fontWeight:700}},"Accesso Archivio")
+          ),
+          lE?h("div",{style:{background:"#fef2f4",border:"1px solid #d9364f",borderRadius:4,padding:"8px 12px",marginBottom:12,color:"#d9364f",fontSize:13,fontWeight:600}},lE):null,
+          h(F,{l:"Utente"},h("input",{style:IS,value:lU,onChange:function(e){setLU(e.target.value)}})),
+          h(F,{l:"Password"},h("input",{style:IS,type:"password",value:lP,onChange:function(e){setLP(e.target.value)},onKeyDown:function(e){if(e.key==="Enter")doLogin()}})),
+          h("button",{onClick:doLogin,style:{width:"100%",padding:"10px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:14,cursor:"pointer"}},"Accedi")
+        )
+      ):null,
+
+      // SELECT SERVICE
+      v==="select"?h("div",null,
+        h("div",{style:{textAlign:"center",marginBottom:22}},
+          h("h1",{style:{fontFamily:"Lora,serif",color:"#17324d",fontSize:22,fontWeight:700}},"Seleziona il Servizio")
+        ),
+        h("div",{style:{maxWidth:460,margin:"0 auto 20px"}},
+          h("input",{style:IS,placeholder:"Cerca...",value:search,onChange:function(e){setSearch(e.target.value)}})
+        ),
+        filtered.map(function(a){return h("div",{key:a.code,style:{marginBottom:14}},
+          h("div",{style:{padding:"7px 12px",background:"#003366",borderRadius:"4px 4px 0 0",color:"#c8a84c",fontWeight:700,fontSize:12}},a.code+" - "+a.name),
+          h("div",{className:"cd",style:{borderRadius:"0 0 4px 4px",borderTop:"none"}},
+            a.svcs.map(function(s,i){return h("button",{key:s.code,className:"svc",onClick:function(){selSvc(s)},style:{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 14px",border:"none",borderTop:i?"1px solid #e8ecf1":"none",background:"transparent",cursor:"pointer",textAlign:"left"}},
+              h("span",{style:{minWidth:46,padding:"3px 6px",background:"#e8f0fe",borderRadius:3,color:"#0066cc",fontWeight:700,fontSize:11,fontFamily:"monospace",textAlign:"center"}},s.code),
+              h("span",{style:{color:"#17324d",fontSize:13,flex:1}},s.name)
+            )})
+          )
+        )})
+      ):null,
+
+      // FORM - separate tabs for STR and OPR
+      v==="form"&&svc?h("div",null,
+        h("button",{onClick:function(){setV("select")},style:{background:"none",border:"none",color:"#0066cc",cursor:"pointer",fontSize:13,fontWeight:600,marginBottom:10}},"< Torna"),
+        h("div",{className:"cd",style:{padding:"14px 16px",marginBottom:14,borderLeft:"3px solid #c8a84c"}},
+          h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+            h("span",{style:{padding:"3px 9px",background:"#003366",borderRadius:3,color:"#c8a84c",fontWeight:700,fontSize:12,fontFamily:"monospace"}},svc.code),
+            h("h2",{style:{fontSize:15,fontWeight:700,margin:0}},svc.name)
+          )
+        ),
+        // TABS
+        h("div",{style:{display:"flex",gap:3,marginBottom:14,background:"#e8ecf1",borderRadius:4,padding:3}},
+          h("button",{onClick:function(){setFt("strategic")},style:{flex:1,padding:"10px 0",borderRadius:3,border:"none",cursor:"pointer",fontWeight:700,fontSize:14,background:ft==="strategic"?"#fff":"transparent",color:ft==="strategic"?"#003366":"#5c6f82"}},"Ob. Strategico"),
+          h("button",{onClick:function(){setFt("operative")},style:{flex:1,padding:"10px 0",borderRadius:3,border:"none",cursor:"pointer",fontWeight:700,fontSize:14,background:ft==="operative"?"#fff":"transparent",color:ft==="operative"?"#008758":"#5c6f82"}},"Ob. Operativo")
+        ),
+        h("div",{className:"cd",style:{padding:"20px 18px"}},
+          h("h3",{style:{fontSize:15,fontWeight:700,color:ft==="strategic"?"#003366":"#008758",margin:"0 0 14px",paddingBottom:8,borderBottom:"2px solid "+(ft==="strategic"?"#003366":"#008758")}},ft==="strategic"?"Scheda Obiettivo Strategico":"Scheda Obiettivo Operativo"),
+          ft==="strategic" ? h(SF,{d:sD,s:setSD}) : h(OF,{d:oD,s:setOD,opts:svc.obj}),
+          h("button",{onClick:submit,style:{width:"100%",padding:"13px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:700,fontSize:15,cursor:"pointer",marginTop:16}},"Salva e Scarica PDF + Excel"),
+          h("div",{style:{textAlign:"center",marginTop:5,fontSize:11,color:"#5c6f82"}},"La scheda viene archiviata e i file scaricati automaticamente")
+        )
+      ):null,
+
+      // ARCHIVE
+      v==="archive"&&logged?h("div",null,
+        h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}},
+          h("div",null,
+            h("h1",{style:{fontFamily:"Lora,serif",fontSize:20,fontWeight:700,margin:0}},"Archivio & Dashboard"),
+            h("p",{style:{color:"#5c6f82",fontSize:12,marginTop:2}},subs.length+" schede ("+nS+" STR, "+nO+" OPR)")
+          ),
+          h("div",{style:{display:"flex",gap:5}},
+            subs.length>0?h("button",{onClick:function(){if(confirm("Svuotare?")){window._SUBS=[];window._saveSubs([]);setSubs([])}},style:{padding:"10px 20px",background:"#fff",color:"#d9364f",border:"1.5px solid #d9364f",borderRadius:4,fontWeight:600,cursor:"pointer"}},"Svuota"):null,
+            h("button",{onClick:function(){window._exportAll()},style:{padding:"10px 20px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer"}},"Esporta Tutto")
+          )
+        ),
+        h("div",{style:{borderBottom:"1px solid #d9dadb",marginBottom:14,display:"flex"}},
+          h("button",{className:"tb"+(aTab==="dashboard"?" ac":""),onClick:function(){setATab("dashboard")}},"Dashboard"),
+          h("button",{className:"tb"+(aTab==="list"?" ac":""),onClick:function(){setATab("list")}},"Schede ("+subs.length+")")
+        ),
+        aTab==="dashboard"?(subs.length?h(Dash,{subs:subs}):h("div",{className:"cd",style:{textAlign:"center",padding:40}},"Compila almeno una scheda")):null,
+        // ARCHIVE LIST - uses dangerouslySetInnerHTML with native onclick
+        aTab==="list"?(subs.length?h("div",{dangerouslySetInnerHTML:{__html:archiveListHTML}}):h("div",{className:"cd",style:{textAlign:"center",padding:40}},"Nessuna scheda")):null
+      ):null
+    ),
+
+    // Footer
+    h("footer",{style:{background:"#003366",padding:"12px 16px",textAlign:"center",color:"rgba(255,255,255,.3)",fontSize:11,borderTop:"2px solid #c8a84c"}},"Regione Molise - Piano Performance Organizzativa 2025/2027 - DGR n. 149/2025")
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+
+</script></body></html>

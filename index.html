@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="it"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Piano Performance 2025-2027 | Regione Molise</title>
+<title>Piano Performance 2026-2028 | Regione Molise</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -47,7 +47,7 @@ window._mkPDF = function(en){
   doc.text("REGIONE MOLISE",25,8);
   doc.setFontSize(7); doc.setFont(undefined,"normal");
   doc.text("Servizio Supporto Direttore Generale della Giunta Regionale",25,13);
-  doc.text("Piano della Performance Organizzativa 2025-2027 | DGR n. 149/2025",25,17);
+  doc.text("Piano della Performance Organizzativa 2026-2028 | DGR n. 149/2025",25,17);
   doc.text(new Date(en.timestamp).toLocaleString("it-IT"),mxR,8,{align:"right"});
   doc.text(sC+" - "+sN,mxR,14,{align:"right"});
   var y=24;
@@ -97,18 +97,18 @@ window._mkPDF = function(en){
 
     doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
       [{content:"RISULTATO FINALE",styles:{fontStyle:"bold",fillColor:hd,cellWidth:44}},{content:d.risultatoFinale||"-"},
-       {content:"2025",styles:{fontStyle:"bold",fillColor:yc,cellWidth:28}},{content:d.ris2025||"-"},
        {content:"2026",styles:{fontStyle:"bold",fillColor:yc,cellWidth:28}},{content:d.ris2026||"-"},
-       {content:"2027",styles:{fontStyle:"bold",fillColor:yc,cellWidth:28}},{content:d.ris2027||"-"}]
+       {content:"2027",styles:{fontStyle:"bold",fillColor:yc,cellWidth:28}},{content:d.ris2027||"-"},
+       {content:"2028",styles:{fontStyle:"bold",fillColor:yc,cellWidth:28}},{content:d.ris2028||"-"}]
     ],theme:"grid",styles:ts}); y=doc.lastAutoTable.finalY+2;
 
     doc.autoTable({startY:y,margin:{left:mx,right:8},body:[
-      [{content:"",styles:{fillColor:hd,cellWidth:26}},{content:"Compless.",styles:{fontStyle:"bold",fillColor:hd}},{content:"2025",styles:{fontStyle:"bold",fillColor:yc}},{content:"2026",styles:{fontStyle:"bold",fillColor:yc}},{content:"2027",styles:{fontStyle:"bold",fillColor:yc}}],
-      [{content:"INDICATORE",styles:{fontStyle:"bold",fillColor:hd}},{content:d.ind||"-"},{content:d.indF2025||"-"},{content:d.indF2026||"-"},{content:d.indF2027||"-"}],
-      [{content:"UM",styles:{fontStyle:"bold",fillColor:hd}},{content:d.um||"-"},{content:d.umF2025||"-"},{content:d.umF2026||"-"},{content:d.umF2027||"-"}],
-      [{content:"Formula",styles:{fontStyle:"bold",fillColor:hd}},{content:d.formula||"-"},{content:d.formulaF2025||"-"},{content:d.formulaF2026||"-"},{content:d.formulaF2027||"-"}],
-      [{content:"BASELINE",styles:{fontStyle:"bold",fillColor:hd}},{content:d.baseline||"-"},{content:d.baselineF2025||"-"},{content:d.baselineF2026||"-"},{content:d.baselineF2027||"-"}],
-      [{content:"FONTE",styles:{fontStyle:"bold",fillColor:hd}},{content:d.fonte||"-"},{content:d.fonteF2025||"-"},{content:d.fonteF2026||"-"},{content:d.fonteF2027||"-"}]
+      [{content:"",styles:{fillColor:hd,cellWidth:26}},{content:"Compless.",styles:{fontStyle:"bold",fillColor:hd}},{content:"2026",styles:{fontStyle:"bold",fillColor:yc}},{content:"2027",styles:{fontStyle:"bold",fillColor:yc}},{content:"2028",styles:{fontStyle:"bold",fillColor:yc}}],
+      [{content:"INDICATORE",styles:{fontStyle:"bold",fillColor:hd}},{content:d.ind||"-"},{content:d.indF2026||"-"},{content:d.indF2027||"-"},{content:d.indF2028||"-"}],
+      [{content:"UM",styles:{fontStyle:"bold",fillColor:hd}},{content:d.um||"-"},{content:d.umF2026||"-"},{content:d.umF2027||"-"},{content:d.umF2028||"-"}],
+      [{content:"Formula",styles:{fontStyle:"bold",fillColor:hd}},{content:d.formula||"-"},{content:d.formulaF2026||"-"},{content:d.formulaF2027||"-"},{content:d.formulaF2028||"-"}],
+      [{content:"BASELINE",styles:{fontStyle:"bold",fillColor:hd}},{content:d.baseline||"-"},{content:d.baselineF2026||"-"},{content:d.baselineF2027||"-"},{content:d.baselineF2028||"-"}],
+      [{content:"FONTE",styles:{fontStyle:"bold",fillColor:hd}},{content:d.fonte||"-"},{content:d.fonteF2026||"-"},{content:d.fonteF2027||"-"},{content:d.fonteF2028||"-"}]
     ],theme:"grid",styles:ts,columnStyles:{0:{cellWidth:26}}});
 
   } else {
@@ -146,7 +146,7 @@ window._mkPDF = function(en){
   // Footer
   doc.setDrawColor(170); doc.line(mx,H-8,mxR,H-8);
   doc.setFontSize(6); doc.setFont(undefined,"normal"); doc.setTextColor(120);
-  doc.text("Regione Molise - Piano Performance Organizzativa 2025/2027 - DGR n. 149/2025",mx,H-4);
+  doc.text("Regione Molise - Piano Performance Organizzativa 2026/2028 - DGR n. 149/2025",mx,H-4);
   var pfx = isStr ? "STR" : "OPR";
   var fname = "Scheda_"+pfx+"_"+sC.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".pdf";
   console.log("Saving PDF:", fname);
@@ -163,7 +163,7 @@ window._mkXLS = function(en){
   var shn = isStr ? "Ob. Strategico" : "Ob. Operativo";
   var hdr = [
     ["REGIONE MOLISE - Servizio Supporto DG Giunta Regionale"],
-    ["Piano Performance 2025-2027 | DGR 149/2025"],[""],
+    ["Piano Performance 2026-2028 | DGR 149/2025"],[""],
     ["Data", new Date(en.timestamp).toLocaleString("it-IT")],
     ["Area", en.areaCode+" - "+en.areaName],
     ["Servizio", en.serviceCode+" - "+en.serviceName],
@@ -178,13 +178,13 @@ window._mkXLS = function(en){
       ["DEFR",d.defr],["Missione",d.missione],["Trasversali",(d.trasversali||[]).join("; ")],
       ["Stakeholders",(d.stakeholders||[]).join("; ")],
       ["Deadline",d.deadlineType==="periodo"?d.deadlinePeriodo:(d.deadlineType||"-")],["Note",d.note],[""],
-      ["RISULTATO ATTESO"],["Finale",d.risultatoFinale],["2025",d.ris2025],["2026",d.ris2026],["2027",d.ris2027],[""],
-      ["INDICATORI","Compless.","2025","2026","2027"],
-      ["Indicatore",d.ind,d.indF2025,d.indF2026,d.indF2027],
-      ["UM",d.um,d.umF2025,d.umF2026,d.umF2027],
-      ["Formula",d.formula,d.formulaF2025,d.formulaF2026,d.formulaF2027],
-      ["Baseline",d.baseline,d.baselineF2025,d.baselineF2026,d.baselineF2027],
-      ["Fonte",d.fonte,d.fonteF2025,d.fonteF2026,d.fonteF2027]
+      ["RISULTATO ATTESO"],["Finale",d.risultatoFinale],["2026",d.ris2026],["2027",d.ris2027],["2028",d.ris2028],[""],
+      ["INDICATORI","Compless.","2026","2027","2028"],
+      ["Indicatore",d.ind,d.indF2026,d.indF2027,d.indF2028],
+      ["UM",d.um,d.umF2026,d.umF2027,d.umF2028],
+      ["Formula",d.formula,d.formulaF2026,d.formulaF2027,d.formulaF2028],
+      ["Baseline",d.baseline,d.baselineF2026,d.baselineF2027,d.baselineF2028],
+      ["Fonte",d.fonte,d.fonteF2026,d.fonteF2027,d.fonteF2028]
     ]);
   } else {
     rows = hdr.concat([
@@ -289,7 +289,7 @@ var SAL=["Organizzativa","Agile","Formativa","Professionale"];
 var TRV=["Rafforzamento capacita","Digitalizzazione","Contenimento spesa","Soddisfazione utenti","Trasparenza","Conciliazione vita/lavoro","Modernizzazione","Pari opportunita","Smaltimento arretrato"];
 var STK=["Cittadini e collettivita","Aziende e imprese","Enti locali o altre PA","Utenti interni"];
 
-function eS(){return{codice:"",nome:"",peso:"",impatto:[],efficacia:[],efficienza:[],salute:[],defr:"",missione:"",trasversali:[],stakeholders:[],stakeAltro:"",deadlineType:"",deadlinePeriodo:"",note:"",risultatoFinale:"",ris2025:"",ris2026:"",ris2027:"",ind:"",um:"",formula:"",baseline:"",fonte:"",indF2025:"",umF2025:"",formulaF2025:"",baselineF2025:"",fonteF2025:"",indF2026:"",umF2026:"",formulaF2026:"",baselineF2026:"",fonteF2026:"",indF2027:"",umF2027:"",formulaF2027:"",baselineF2027:"",fonteF2027:""}}
+function eS(){return{codice:"",nome:"",peso:"",impatto:[],efficacia:[],efficienza:[],salute:[],defr:"",missione:"",trasversali:[],stakeholders:[],stakeAltro:"",deadlineType:"",deadlinePeriodo:"",note:"",risultatoFinale:"",ris2026:"",ris2027:"",ris2028:"",ind:"",um:"",formula:"",baseline:"",fonte:"",indF2026:"",umF2026:"",formulaF2026:"",baselineF2026:"",fonteF2026:"",indF2027:"",umF2027:"",formulaF2027:"",baselineF2027:"",fonteF2027:"",indF2028:"",umF2028:"",formulaF2028:"",baselineF2028:"",fonteF2028:""}}
 function eO(){return{codice:"",nome:"",peso:"",stratRif:"",rischio:"",rischioDesc:"",stakeholders:[],stakeAltro:"",deadline:"",importanza:"",risultato:"",ind:"",um:"",formula:"",baseline:"",fonte:""}}
 function hasFilled(d){return d && d.codice && d.nome}
 
@@ -349,9 +349,9 @@ function SF(p){
       h("div",{style:{fontWeight:700,color:"#b8860b",marginBottom:8}},"RISULTATO ATTESO"),
       h(F,{l:"Risultato Finale",r:1},h("textarea",{style:TS,value:d.risultatoFinale,onChange:u("risultatoFinale")})),
       h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
-        h(F,{l:"2025"},h("textarea",{style:Object.assign({},TS,{minHeight:50}),value:d.ris2025,onChange:u("ris2025")})),
         h(F,{l:"2026"},h("textarea",{style:Object.assign({},TS,{minHeight:50}),value:d.ris2026,onChange:u("ris2026")})),
-        h(F,{l:"2027"},h("textarea",{style:Object.assign({},TS,{minHeight:50}),value:d.ris2027,onChange:u("ris2027")}))
+        h(F,{l:"2027"},h("textarea",{style:Object.assign({},TS,{minHeight:50}),value:d.ris2027,onChange:u("ris2027")})),
+        h(F,{l:"2028"},h("textarea",{style:Object.assign({},TS,{minHeight:50}),value:d.ris2028,onChange:u("ris2028")}))
       )
     ),
     h("div",{className:"cd",style:{padding:14,borderLeft:"3px solid #008758"}},
@@ -593,12 +593,12 @@ function Dash(p){
     // ── ROW 5: Indicatori dettagliati strategici ──
     nS>0?h("div",{className:"cd",style:{padding:14,marginBottom:14}},
       secH("Indicatori Obiettivi Strategici"),
-      tbl(["Servizio","Codice","Indicatore","UM","Baseline","Fonte","Ris. 2025","Ris. 2026","Ris. 2027"],
+      tbl(["Servizio","Codice","Indicatore","UM","Baseline","Fonte","Ris. 2026","Ris. 2027","Ris. 2028"],
         strs.map(function(e){
           var d=e.data;
           return [
             e.serviceCode,d.codice||"-",d.ind||"-",d.um||"-",d.baseline||"-",d.fonte||"-",
-            d.ris2025||"-",d.ris2026||"-",d.ris2027||"-"
+            d.ris2026||"-",d.ris2027||"-",d.ris2028||"-"
           ];
         })
       )
@@ -731,7 +731,7 @@ function App(){
           h("div",null,
             h("div",{style:{color:"#c8a84c",fontWeight:700,fontSize:14}},"REGIONE MOLISE"),
             h("div",{style:{color:"rgba(255,255,255,.65)",fontSize:11}},"Servizio Supporto Direttore Generale della Giunta Regionale"),
-            h("div",{style:{color:"rgba(255,255,255,.35)",fontSize:10}},"Piano Performance Organizzativa 2025-2027")
+            h("div",{style:{color:"rgba(255,255,255,.35)",fontSize:10}},"Piano Performance Organizzativa 2026-2028")
           )
         ),
         h("nav",{style:{display:"flex",gap:4,alignItems:"center"}},
@@ -823,7 +823,7 @@ function App(){
     ),
 
     // Footer
-    h("footer",{style:{background:"#003366",padding:"12px 16px",textAlign:"center",color:"rgba(255,255,255,.3)",fontSize:11,borderTop:"2px solid #c8a84c"}},"Regione Molise - Piano Performance Organizzativa 2025/2027 - DGR n. 149/2025")
+    h("footer",{style:{background:"#003366",padding:"12px 16px",textAlign:"center",color:"rgba(255,255,255,.3)",fontSize:11,borderTop:"2px solid #c8a84c"}},"Regione Molise - Piano Performance Organizzativa 2026/2028 - DGR n. 149/2025")
   );
 }
 

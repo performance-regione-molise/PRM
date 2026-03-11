@@ -32,10 +32,26 @@ button{font-family:inherit}
 // ════════════════════════════════════════════════
 // GLOBAL DATA & STORAGE
 // ════════════════════════════════════════════════
-window.SK = "ppo9";
+window.SK = "ppo_molise";
 window._SUBS = [];
 window._save = function(s){ window._SUBS=s; try{localStorage.setItem(window.SK,JSON.stringify(s))}catch(e){} };
-window._load = function(){ try{return JSON.parse(localStorage.getItem(window.SK)||"[]")}catch(e){return[]} };
+window._load = function(){
+  // Try current key first, then migrate old keys
+  var keys=["ppo_molise","ppo9","ppo8","ppo-v7","ppo-m-v6","ppo-m-v5"];
+  for(var i=0;i<keys.length;i++){
+    try{var d=JSON.parse(localStorage.getItem(keys[i])||"null");
+      if(d&&d.length){
+        if(keys[i]!=="ppo_molise"){localStorage.setItem("ppo_molise",JSON.stringify(d));console.log("Migrated from "+keys[i]+": "+d.length+" entries")}
+        return d;
+      }
+    }catch(e){}
+  }
+  return[];
+};
+// Simple password hash
+window._hash = function(str){
+  var h=0;for(var i=0;i<str.length;i++){h=((h<<5)-h)+str.charCodeAt(i);h=h&h}return"h"+Math.abs(h).toString(36);
+};
 
 // Services from Pianta Organica Aggiornata 10/03/2026
 window.AREAS = [
@@ -1114,11 +1130,13 @@ function Dash(p){
     // ── CRONOLOGIA ──
     h("div",{className:"cd",style:{padding:12}},
       sec("Cronologia Compilazioni"),
-      tbl(["Data","Tipo","Area","Servizio","Codice","Descrizione"],
+      tbl(["Data","Tipo","Area","Servizio","Codice","Descrizione","Autore","Ultima Modifica"],
         s.slice().reverse().map(function(e){return[
           new Date(e.timestamp).toLocaleString("it-IT"),
           e.type==="strategic"?"STR":"OPR",
-          e.areaCode,e.serviceCode,e.data.codice||"-",(e.data.nome||"-").substring(0,45)
+          e.areaCode,e.serviceCode,e.data.codice||"-",(e.data.nome||"-").substring(0,35),
+          e.createdBy||"-",
+          e.lastModifiedBy&&e.lastModifiedAt!==(e.createdAt||e.timestamp)?e.lastModifiedBy+" ("+new Date(e.lastModifiedAt).toLocaleString("it-IT")+")":"-"
         ]}))
     )
   );
@@ -1141,6 +1159,15 @@ function App(){
   var _fd=useState(null),fData=_fd[0],setFData=_fd[1];
   var _fEdit=useState(null),fEditId=_fEdit[0],setFEditId=_fEdit[1];
   var _fParent=useState(null),fParentStr=_fParent[0],setFParentStr=_fParent[1];
+  // User credentials
+  var _cm=useState(false),credModal=_cm[0],setCM=_cm[1];
+  var _an=useState(""),authName=_an[0],setAN=_an[1];
+  var _ap=useState(""),authPwd=_ap[0],setAP=_ap[1];
+  var _ae=useState(""),authErr=_ae[0],setAE=_ae[1];
+  var _pa=useState(null),pendingAction=_pa[0],setPA=_pa[1];
+  // Current session author (saved after credential check)
+  var _ca=useState(""),curAuthor=_ca[0],setCA=_ca[1];
+  var _ch=useState(""),curHash=_ch[0],setCH=_ch[1];
 
   useEffect(function(){var handler=function(){setSubs(window._SUBS.slice())};window.addEventListener("subsChanged",handler);return function(){window.removeEventListener("subsChanged",handler)}},[]);
 
@@ -1152,30 +1179,81 @@ function App(){
   var svcStrs=svc?subs.filter(function(s){return s.type==="strategic"&&s.serviceCode===svc.code}):[];
   var strWeightSum=0;svcStrs.forEach(function(s){strWeightSum+=parseFloat(s.data.peso)||0});
 
-  // Start new STR
-  var newStr=function(){setFType("strategic");setFData(window.emptySTR());setFEditId(null);setFParentStr(null);setV("form")};
+  // ── Credential flow ──
+  // For NEW: ask name + password (user creates mini-account)
+  var askCredNew=function(action){
+    setAN("");setAP("");setAE("");setPA({action:action,mode:"new"});setCM(true);
+  };
+  // For EDIT: ask password only (must match stored hash)
+  var askCredEdit=function(entry,action){
+    setAN(entry.author||"");setAP("");setAE("");setPA({action:action,mode:"edit",entry:entry});setCM(true);
+  };
+  // Confirm credentials
+  var confirmCred=function(){
+    if(!authName.trim()){setAE("Inserisci Nome e Cognome");return}
+    if(!authPwd.trim()||authPwd.length<3){setAE("Password richiesta (min 3 caratteri)");return}
+    var hash=window._hash(authPwd);
+    if(pendingAction.mode==="edit"){
+      // Check password matches
+      if(pendingAction.entry.authorHash&&pendingAction.entry.authorHash!==hash){
+        setAE("Password non corretta. Solo l'autore puo modificare.");return;
+      }
+    }
+    setCA(authName.trim());setCH(hash);setCM(false);
+    // Execute pending action
+    pendingAction.action(authName.trim(),hash);
+  };
+
+  // Start new STR (with credential check)
+  var newStr=function(){
+    askCredNew(function(name,hash){
+      setFType("strategic");setFData(window.emptySTR());setFEditId(null);setFParentStr(null);setV("form");
+    });
+  };
   // Start new OPR linked to a strategic
-  var newOpr=function(strEntry){setFType("operative");var d=window.emptyOPR();d.stratRif=strEntry.data.codice;d.stratRifDesc=strEntry.data.nome;setFData(d);setFEditId(null);setFParentStr(strEntry.id);setV("form")};
-  // Edit existing
-  var editEntry=function(en){setFType(en.type);setFData(Object.assign({},en.data));setFEditId(en.id);setFParentStr(en.parentId||null);setV("form")};
+  var newOpr=function(strEntry){
+    askCredNew(function(name,hash){
+      setFType("operative");var d=window.emptyOPR();d.stratRif=strEntry.data.codice;d.stratRifDesc=strEntry.data.nome;setFData(d);setFEditId(null);setFParentStr(strEntry.id);setV("form");
+    });
+  };
+  // Edit existing (requires matching password)
+  var editEntry=function(en){
+    askCredEdit(en,function(name,hash){
+      setFType(en.type);setFData(Object.assign({},en.data));setFEditId(en.id);setFParentStr(en.parentId||null);setV("form");
+    });
+  };
 
   // Save form
   var saveForm=function(){
     if(!fData||!fData.codice||!fData.nome){flash("Compila Codice e Descrizione","err");return}
     var area=window.findArea(svc.code);
+    var now=new Date().toISOString();
     if(fEditId){
-      // Update existing
-      var updated=subs.map(function(s){if(s.id===fEditId){return Object.assign({},s,{data:Object.assign({},fData)})}return s});
+      // Update existing - add modification record
+      var updated=subs.map(function(s){
+        if(s.id===fEditId){
+          var hist=(s.modifications||[]).concat([{by:curAuthor,at:now}]);
+          return Object.assign({},s,{data:Object.assign({},fData),lastModifiedBy:curAuthor,lastModifiedAt:now,modifications:hist});
+        }return s;
+      });
       setSubs(updated);window._save(updated);
-      flash("Aggiornato!");
+      flash("Aggiornato da "+curAuthor+"!");
     } else {
-      // New entry
-      var en={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),timestamp:new Date().toISOString(),serviceCode:svc.code,serviceName:svc.name,areaCode:area?area.code:"",areaName:area?area.name:"",type:fType,data:Object.assign({},fData),parentId:fParentStr||null};
+      // New entry with author info
+      var en={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+        timestamp:now,serviceCode:svc.code,serviceName:svc.name,
+        areaCode:area?area.code:"",areaName:area?area.name:"",
+        type:fType,data:Object.assign({},fData),parentId:fParentStr||null,
+        author:curAuthor,authorHash:curHash,
+        createdBy:curAuthor,createdAt:now,
+        lastModifiedBy:curAuthor,lastModifiedAt:now,
+        modifications:[]
+      };
       var up=subs.concat([en]);setSubs(up);window._save(up);
       // Download
       try{window._mkPDF(en)}catch(e){console.error(e);alert("Errore PDF: "+e.message)}
       setTimeout(function(){try{window._mkXLS(en)}catch(e){console.error(e);alert("Errore XLS: "+e.message)}},1200);
-      flash("Salvato! PDF+XLS in download...");
+      flash("Salvato da "+curAuthor+"! PDF+XLS in download...");
     }
     setV("service");window.scrollTo(0,0);
   };
@@ -1184,23 +1262,58 @@ function App(){
 
   var filtered=search.trim()?window.AREAS.map(function(a){return Object.assign({},a,{svcs:a.svcs.filter(function(s){return s.code.toLowerCase().indexOf(search.toLowerCase())>=0||s.name.toLowerCase().indexOf(search.toLowerCase())>=0})})}).filter(function(a){return a.svcs.length>0}):window.AREAS;
 
-  // Archive list HTML
+  // Archive list HTML - with author info and individual delete
   var archHTML="";
   if(subs.length){subs.slice().reverse().forEach(function(e){
     var tl=e.type==="strategic"?"STR":"OPR",tc=e.type==="strategic"?"tag-str":"tag-opr";
+    var authorLine="";
+    if(e.createdBy) authorLine+='<span style="font-size:9px;color:#008758">Creato da: <b>'+e.createdBy+'</b> il '+new Date(e.createdAt||e.timestamp).toLocaleString("it-IT")+'</span>';
+    if(e.lastModifiedBy&&e.lastModifiedAt!==(e.createdAt||e.timestamp)) authorLine+=' <span style="font-size:9px;color:#b8860b;margin-left:8px">Mod. da: <b>'+e.lastModifiedBy+'</b> il '+new Date(e.lastModifiedAt).toLocaleString("it-IT")+'</span>';
+    if(e.modifications&&e.modifications.length>0) authorLine+=' <span style="font-size:9px;color:#5c6f82">('+e.modifications.length+' modifiche)</span>';
     archHTML+='<div class="cd" style="padding:10px 12px;margin-bottom:6px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px"><div style="flex:1;min-width:0">';
     archHTML+='<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;flex-wrap:wrap"><span class="tag '+tc+'">'+tl+'</span><span style="font-family:monospace;font-weight:700;font-size:11px;color:#003366">'+e.serviceCode+'</span><span style="color:#5c6f82;font-size:10px">'+new Date(e.timestamp).toLocaleString("it-IT")+'</span></div>';
     archHTML+='<div style="font-weight:600;font-size:12px">'+e.serviceName+'</div>';
     if(e.data.nome)archHTML+='<div style="color:#5c6f82;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.data.codice||"")+' - '+e.data.nome+'</div>';
+    if(authorLine) archHTML+='<div style="margin-top:3px">'+authorLine+'</div>';
     archHTML+='</div><div style="display:flex;gap:3px;flex-shrink:0">';
     archHTML+='<button data-act="pdf" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#fff;color:#0066cc;border:1.5px solid #0066cc;border-radius:3px;cursor:pointer">PDF</button>';
     archHTML+='<button data-act="xls" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#fff;color:#008758;border:1.5px solid #008758;border-radius:3px;cursor:pointer">XLS</button>';
-    archHTML+='<button data-act="del" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;background:none;border:1px solid #e8ecf1;border-radius:3px;color:#aaa;cursor:pointer">x</button>';
+    archHTML+='<button data-act="del" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;background:none;border:1px solid #d9364f;border-radius:3px;color:#d9364f;cursor:pointer" title="Elimina questa scheda">Elimina</button>';
     archHTML+='</div></div></div>';
   })}
 
   return h("div",{style:{minHeight:"100vh",display:"flex",flexDirection:"column"}},
     toast?h("div",{style:{position:"fixed",top:12,right:12,zIndex:9999,padding:"10px 20px",borderRadius:4,background:toast.t==="err"?"#d9364f":"#008758",color:"#fff",fontWeight:600,fontSize:13,boxShadow:"0 4px 16px rgba(0,0,0,.2)"}},toast.m):null,
+
+    // Credential Modal
+    credModal?h("div",{style:{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center"}},
+      h("div",{className:"cd",style:{padding:24,width:400,maxWidth:"90vw"}},
+        h("h3",{style:{fontSize:16,fontWeight:700,color:"#003366",marginBottom:4}},
+          pendingAction&&pendingAction.mode==="edit"?"Verifica Credenziali":"Inserisci le tue Credenziali"),
+        h("p",{style:{fontSize:12,color:"#5c6f82",marginBottom:14}},
+          pendingAction&&pendingAction.mode==="edit"?
+          "Per modificare questa scheda inserisci la password usata alla creazione.":
+          "Queste credenziali ti serviranno per modificare la scheda in futuro."),
+        authErr?h("div",{style:{background:"#fef2f4",border:"1px solid #d9364f",borderRadius:4,padding:"6px 10px",marginBottom:10,color:"#d9364f",fontSize:12,fontWeight:600}},authErr):null,
+        h("div",{style:{marginBottom:10}},
+          h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},"Nome e Cognome"),
+          h("input",{style:Object.assign({},IS,{background:pendingAction&&pendingAction.mode==="edit"?"#f0f0f0":"#fff"}),
+            value:authName,onChange:function(e){setAN(e.target.value)},
+            readOnly:pendingAction&&pendingAction.mode==="edit",
+            placeholder:"es. Mario Rossi"})
+        ),
+        h("div",{style:{marginBottom:14}},
+          h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},"Password"),
+          h("input",{style:IS,type:"password",value:authPwd,onChange:function(e){setAP(e.target.value)},
+            onKeyDown:function(e){if(e.key==="Enter")confirmCred()},
+            placeholder:pendingAction&&pendingAction.mode==="edit"?"Inserisci la password":"Scegli una password (min 3 caratteri)"})
+        ),
+        h("div",{style:{display:"flex",gap:8}},
+          h("button",{onClick:confirmCred,style:{flex:1,padding:"10px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Conferma"),
+          h("button",{onClick:function(){setCM(false);setPA(null)},style:{flex:1,padding:"10px",background:"#fff",color:"#5c6f82",border:"1.5px solid #d9dadb",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Annulla")
+        )
+      )
+    ):null,
 
     // Header
     h("header",{style:{background:"#003366",borderBottom:"3px solid #c8a84c",position:"sticky",top:0,zIndex:100}},
@@ -1270,7 +1383,8 @@ function App(){
                   h("span",{style:{fontFamily:"monospace",fontWeight:700,fontSize:12}},str.data.codice),
                   h("span",{style:{fontSize:12,fontWeight:700,color:"#0066cc"}},"Peso: "+str.data.peso+"%")
                 ),
-                h("div",{style:{fontSize:12}},(str.data.nome||"").substring(0,80))
+                h("div",{style:{fontSize:12}},(str.data.nome||"").substring(0,80)),
+                str.createdBy?h("div",{style:{fontSize:9,color:"#008758",marginTop:2}},"Autore: "+str.createdBy+(str.lastModifiedBy&&str.lastModifiedAt!==(str.createdAt||str.timestamp)?" | Mod: "+str.lastModifiedBy:"")):null
               ),
               h("div",{style:{display:"flex",gap:3}},
                 h("button",{onClick:function(){editEntry(str)},style:{padding:"3px 8px",fontSize:10,background:"#e8f0fe",border:"1px solid #0066cc",borderRadius:3,color:"#0066cc",cursor:"pointer",fontWeight:600}},"Modifica"),
@@ -1320,7 +1434,6 @@ function App(){
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
           h("div",null,h("h1",{style:{fontFamily:"Lora,serif",fontSize:18,fontWeight:700}},"Archivio & Dashboard"),h("p",{style:{color:"#5c6f82",fontSize:11}},subs.length+" schede")),
           h("div",{style:{display:"flex",gap:4}},
-            subs.length?h("button",{onClick:function(){if(confirm("Svuotare?")){window._SUBS=[];window._save([]);setSubs([])}},style:{padding:"8px 16px",background:"#fff",color:"#d9364f",border:"1.5px solid #d9364f",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Svuota"):null,
             h("button",{onClick:function(){window._exportAll()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto")
           )
         ),

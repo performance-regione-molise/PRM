@@ -32,23 +32,110 @@ button{font-family:inherit}
 // ════════════════════════════════════════════════
 // GLOBAL DATA & STORAGE
 // ════════════════════════════════════════════════
+// ════════════════════════════════════════════════
+// STORAGE: Cloud (Google Apps Script) + localStorage cache
+// ════════════════════════════════════════════════
+// ISTRUZIONI: Incolla qui sotto l'URL del tuo Google Apps Script Web App
+// (vedi README per come crearlo)
+window.API_URL = "https://script.google.com/macros/s/AKfycbxwl_aCI54TredQ0ELd-kkUKNlMhA1oINi17vwCIqKW9Hg6rEq_B95nZ9cHwOpQnwDVQg/exec"; // <── INCOLLA QUI IL TUO URL (es: "https://script.google.com/macros/s/XXXXXXX/exec")
+
 window.SK = "ppo_molise";
 window._SUBS = [];
-window._save = function(s){ window._SUBS=s; try{localStorage.setItem(window.SK,JSON.stringify(s))}catch(e){} };
+window._syncing = false;
+window._lastSync = null;
+
+// Save: localStorage + cloud
+window._save = function(s){
+  window._SUBS = s;
+  try{ localStorage.setItem(window.SK, JSON.stringify(s)); }catch(e){}
+  // Cloud save
+  if(window.API_URL){
+    window._syncing = true;
+    window.dispatchEvent(new Event("syncStatus"));
+    fetch(window.API_URL, {
+      method:"POST", mode:"no-cors",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"save",data:s})
+    }).then(function(){
+      window._syncing=false; window._lastSync=new Date();
+      window.dispatchEvent(new Event("syncStatus"));
+      console.log("Cloud save OK");
+    }).catch(function(e){
+      window._syncing=false;
+      window.dispatchEvent(new Event("syncStatus"));
+      console.error("Cloud save error:",e);
+    });
+  }
+};
+
+// Load: cloud first, fallback localStorage
 window._load = function(){
-  // Try current key first, then migrate old keys
+  // Start with localStorage cache
+  var local = [];
   var keys=["ppo_molise","ppo9","ppo8","ppo-v7","ppo-m-v6","ppo-m-v5"];
   for(var i=0;i<keys.length;i++){
     try{var d=JSON.parse(localStorage.getItem(keys[i])||"null");
       if(d&&d.length){
-        if(keys[i]!=="ppo_molise"){localStorage.setItem("ppo_molise",JSON.stringify(d));console.log("Migrated from "+keys[i]+": "+d.length+" entries")}
-        return d;
+        if(keys[i]!=="ppo_molise") localStorage.setItem("ppo_molise",JSON.stringify(d));
+        local=d; break;
       }
     }catch(e){}
   }
-  return[];
+  // Trigger async cloud load
+  if(window.API_URL){
+    window._syncing=true;
+    fetch(window.API_URL+"?action=load&t="+Date.now())
+    .then(function(r){return r.json()})
+    .then(function(cloudData){
+      window._syncing=false; window._lastSync=new Date();
+      if(cloudData&&Array.isArray(cloudData)&&cloudData.length>0){
+        // Merge: cloud wins if it has more or newer data
+        var merged = cloudData;
+        // Also add any local entries not in cloud (offline additions)
+        var cloudIds={};cloudData.forEach(function(e){cloudIds[e.id]=true});
+        local.forEach(function(e){if(!cloudIds[e.id])merged.push(e)});
+        window._SUBS=merged;
+        try{localStorage.setItem("ppo_molise",JSON.stringify(merged))}catch(e){}
+        window.dispatchEvent(new Event("subsChanged"));
+        console.log("Cloud load OK: "+merged.length+" entries");
+      } else if(local.length>0){
+        // Cloud empty, push local data up
+        window._save(local);
+        console.log("Cloud was empty, pushed "+local.length+" local entries");
+      }
+      window.dispatchEvent(new Event("syncStatus"));
+    }).catch(function(e){
+      window._syncing=false;
+      window.dispatchEvent(new Event("syncStatus"));
+      console.log("Cloud load failed, using localStorage:",e);
+    });
+  }
+  return local;
 };
-// Simple password hash
+
+// Force reload from cloud
+window._forceSync = function(){
+  if(!window.API_URL){alert("URL API non configurato. Vedi istruzioni nel README.");return}
+  window._syncing=true;
+  window.dispatchEvent(new Event("syncStatus"));
+  fetch(window.API_URL+"?action=load&t="+Date.now())
+  .then(function(r){return r.json()})
+  .then(function(d){
+    window._syncing=false;window._lastSync=new Date();
+    if(d&&Array.isArray(d)){
+      window._SUBS=d;
+      try{localStorage.setItem("ppo_molise",JSON.stringify(d))}catch(e){}
+      window.dispatchEvent(new Event("subsChanged"));
+      alert("Sincronizzazione completata: "+d.length+" schede");
+    }
+    window.dispatchEvent(new Event("syncStatus"));
+  }).catch(function(e){
+    window._syncing=false;
+    window.dispatchEvent(new Event("syncStatus"));
+    alert("Errore sincronizzazione: "+e.message);
+  });
+};
+
 window._hash = function(str){
   var h=0;for(var i=0;i<str.length;i++){h=((h<<5)-h)+str.charCodeAt(i);h=h&h}return"h"+Math.abs(h).toString(36);
 };
@@ -1170,6 +1257,10 @@ function App(){
   var _ch=useState(""),curHash=_ch[0],setCH=_ch[1];
 
   useEffect(function(){var handler=function(){setSubs(window._SUBS.slice())};window.addEventListener("subsChanged",handler);return function(){window.removeEventListener("subsChanged",handler)}},[]);
+  // Sync status
+  var _sy=useState(false),syncing=_sy[0],setSyncing=_sy[1];
+  useEffect(function(){var h2=function(){setSyncing(window._syncing)};window.addEventListener("syncStatus",h2);return function(){window.removeEventListener("syncStatus",h2)}},[]);
+  var isCloudOK=!!window.API_URL;
 
   var flash=function(m,t){setToast({m:m,t:t||"ok"});setTimeout(function(){setToast(null)},3000)};
 
@@ -1325,12 +1416,21 @@ function App(){
         h("nav",{style:{display:"flex",gap:3}},
           h("button",{onClick:function(){setV("select")},style:{padding:"6px 12px",borderRadius:3,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:v==="select"||v==="service"||v==="form"?"rgba(200,168,76,.2)":"transparent",color:v==="select"||v==="service"||v==="form"?"#c8a84c":"rgba(255,255,255,.5)"}},"Compilazione"),
           h("button",{onClick:function(){if(logged)setV("archive");else setV("login")},style:{padding:"6px 12px",borderRadius:3,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:v==="archive"||v==="login"?"rgba(200,168,76,.2)":"transparent",color:v==="archive"||v==="login"?"#c8a84c":"rgba(255,255,255,.5)"}},logged?"Archivio ("+subs.length+")":"Archivio"),
-          logged?h("button",{onClick:function(){setLogged(false);setV("select")},style:{padding:"4px 8px",borderRadius:3,border:"1px solid rgba(255,255,255,.2)",cursor:"pointer",fontSize:10,background:"transparent",color:"rgba(255,255,255,.4)"}},"Esci"):null
+          logged?h("button",{onClick:function(){setLogged(false);setV("select")},style:{padding:"4px 8px",borderRadius:3,border:"1px solid rgba(255,255,255,.2)",cursor:"pointer",fontSize:10,background:"transparent",color:"rgba(255,255,255,.4)"}},"Esci"):null,
+          h("button",{onClick:function(){window._forceSync()},style:{padding:"4px 8px",borderRadius:3,border:"none",cursor:"pointer",fontSize:10,background:syncing?"#e67e22":isCloudOK?"#008758":"#d9364f",color:"#fff",marginLeft:4}},syncing?"Sync...":isCloudOK?"Cloud OK":"Locale")
         )
       )
     ),
 
     h("main",{style:{maxWidth:1080,margin:"0 auto",padding:"16px 14px 40px",flex:1,width:"100%"}},
+
+      // Cloud config warning
+      !isCloudOK?h("div",{style:{background:"#fff3cd",border:"1px solid #ffc107",borderRadius:4,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#856404"}},
+        h("b",null,"Attenzione: Modalita locale."),
+        " I dati sono salvati solo su QUESTO browser. Per condividere i dati tra tutti gli utenti, configura il backend cloud (Google Sheets). ",
+        h("a",{href:"https://github.com",target:"_blank",style:{color:"#0066cc",fontWeight:600}},"Vedi istruzioni nel README"),
+        " oppure clicca il bottone ",h("b",null,"'Locale'")," in alto a destra."
+      ):null,
 
       // LOGIN
       v==="login"&&!logged?h("div",{style:{maxWidth:360,margin:"50px auto"}},h("div",{className:"cd",style:{padding:24}},

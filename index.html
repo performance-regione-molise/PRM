@@ -33,33 +33,38 @@ button{font-family:inherit}
 // GLOBAL DATA & STORAGE
 // ════════════════════════════════════════════════
 // ════════════════════════════════════════════════
-// STORAGE: Cloud (Google Apps Script) + localStorage cache
+// STORAGE: Cloud (Google Apps Script) + localStorage with backup protection
 // ════════════════════════════════════════════════
 // ISTRUZIONI: Incolla qui sotto l'URL del tuo Google Apps Script Web App
-// (vedi README per come crearlo)
-window.API_URL = "https://script.google.com/macros/s/AKfycbxwl_aCI54TredQ0ELd-kkUKNlMhA1oINi17vwCIqKW9Hg6rEq_B95nZ9cHwOpQnwDVQg/exec"; // <── INCOLLA QUI IL TUO URL (es: "https://script.google.com/macros/s/XXXXXXX/exec")
+window.API_URL = ""; // <── INCOLLA QUI IL TUO URL (es: "https://script.google.com/macros/s/XXXXXXX/exec")
 
 window.SK = "ppo_molise";
 window._SUBS = [];
 window._syncing = false;
 window._lastSync = null;
 
-// Save: localStorage + cloud
+// Save: localStorage (with backup) + cloud
 window._save = function(s){
   window._SUBS = s;
-  try{ localStorage.setItem(window.SK, JSON.stringify(s)); }catch(e){}
+  var json = JSON.stringify(s);
+  try{
+    localStorage.setItem(window.SK, json);
+    // Also save timestamped backup to prevent data loss
+    localStorage.setItem(window.SK + "_backup", json);
+    localStorage.setItem(window.SK + "_ts", new Date().toISOString());
+    localStorage.setItem(window.SK + "_count", String(s.length));
+  }catch(e){ console.error("localStorage save error:", e); }
   // Cloud save
   if(window.API_URL){
     window._syncing = true;
     window.dispatchEvent(new Event("syncStatus"));
     fetch(window.API_URL, {
-      method:"POST", mode:"no-cors",
-      headers:{"Content-Type":"application/json"},
+      method:"POST",
+      headers:{"Content-Type":"text/plain"},
       body:JSON.stringify({action:"save",data:s})
-    }).then(function(){
+    }).then(function(r){return r.text()}).then(function(){
       window._syncing=false; window._lastSync=new Date();
       window.dispatchEvent(new Event("syncStatus"));
-      console.log("Cloud save OK");
     }).catch(function(e){
       window._syncing=false;
       window.dispatchEvent(new Event("syncStatus"));
@@ -68,38 +73,70 @@ window._save = function(s){
   }
 };
 
-// Load: cloud first, fallback localStorage
+// Load: cloud first, fallback localStorage (with backup recovery)
 window._load = function(){
-  // Start with localStorage cache
+  // Recover best local data (main or backup, whichever has more entries)
   var local = [];
-  var keys=["ppo_molise","ppo9","ppo8","ppo-v7","ppo-m-v6","ppo-m-v5"];
-  for(var i=0;i<keys.length;i++){
-    try{var d=JSON.parse(localStorage.getItem(keys[i])||"null");
-      if(d&&d.length){
-        if(keys[i]!=="ppo_molise") localStorage.setItem("ppo_molise",JSON.stringify(d));
-        local=d; break;
-      }
-    }catch(e){}
-  }
+  try{
+    var main = JSON.parse(localStorage.getItem(window.SK) || "null");
+    var backup = JSON.parse(localStorage.getItem(window.SK + "_backup") || "null");
+    // Also try old keys for migration
+    var old = null;
+    var oldKeys = ["ppo9","ppo8","ppo-v7","ppo-m-v6","ppo-m-v5"];
+    for(var i=0;i<oldKeys.length;i++){
+      try{var d=JSON.parse(localStorage.getItem(oldKeys[i])||"null");if(d&&d.length&&(!old||d.length>old.length))old=d;}catch(e){}
+    }
+    // Pick the one with most entries
+    var candidates = [main, backup, old].filter(function(x){return x && Array.isArray(x)});
+    candidates.sort(function(a,b){return b.length - a.length});
+    if(candidates.length > 0) local = candidates[0];
+    // Re-save the best version
+    if(local.length > 0){
+      localStorage.setItem(window.SK, JSON.stringify(local));
+      localStorage.setItem(window.SK + "_backup", JSON.stringify(local));
+    }
+    if(local.length > 0) console.log("Local load: " + local.length + " entries");
+  }catch(e){ console.error("localStorage load error:", e); }
+
   // Trigger async cloud load
   if(window.API_URL){
     window._syncing=true;
+    window.dispatchEvent(new Event("syncStatus"));
     fetch(window.API_URL+"?action=load&t="+Date.now())
     .then(function(r){return r.json()})
     .then(function(cloudData){
       window._syncing=false; window._lastSync=new Date();
-      if(cloudData&&Array.isArray(cloudData)&&cloudData.length>0){
-        // Merge: cloud wins if it has more or newer data
-        var merged = cloudData;
-        // Also add any local entries not in cloud (offline additions)
-        var cloudIds={};cloudData.forEach(function(e){cloudIds[e.id]=true});
-        local.forEach(function(e){if(!cloudIds[e.id])merged.push(e)});
-        window._SUBS=merged;
-        try{localStorage.setItem("ppo_molise",JSON.stringify(merged))}catch(e){}
+      if(cloudData && Array.isArray(cloudData)){
+        // Merge: combine cloud + local by ID (no duplicates, no data loss)
+        var byId = {};
+        // Cloud entries first
+        cloudData.forEach(function(e){ if(e && e.id) byId[e.id] = e; });
+        // Local entries: add if not in cloud, or if local is newer
+        local.forEach(function(e){
+          if(!e || !e.id) return;
+          if(!byId[e.id]){
+            byId[e.id] = e; // New local entry not in cloud
+          } else {
+            // Keep the one with latest modification
+            var cloudTs = byId[e.id].lastModifiedAt || byId[e.id].timestamp || "";
+            var localTs = e.lastModifiedAt || e.timestamp || "";
+            if(localTs > cloudTs) byId[e.id] = e;
+          }
+        });
+        var merged = Object.keys(byId).map(function(k){return byId[k]});
+        window._SUBS = merged;
+        try{
+          localStorage.setItem(window.SK, JSON.stringify(merged));
+          localStorage.setItem(window.SK + "_backup", JSON.stringify(merged));
+        }catch(e){}
+        // Push merged back to cloud if we added local entries
+        if(merged.length > cloudData.length){
+          window._save(merged);
+          console.log("Merged: pushed " + (merged.length - cloudData.length) + " local entries to cloud");
+        }
         window.dispatchEvent(new Event("subsChanged"));
-        console.log("Cloud load OK: "+merged.length+" entries");
-      } else if(local.length>0){
-        // Cloud empty, push local data up
+        console.log("Cloud load OK: "+merged.length+" entries (cloud:"+cloudData.length+", local:"+local.length+")");
+      } else if(local.length > 0){
         window._save(local);
         console.log("Cloud was empty, pushed "+local.length+" local entries");
       }
@@ -107,7 +144,7 @@ window._load = function(){
     }).catch(function(e){
       window._syncing=false;
       window.dispatchEvent(new Event("syncStatus"));
-      console.log("Cloud load failed, using localStorage:",e);
+      console.log("Cloud unavailable, using localStorage ("+local.length+" entries):",e.message||e);
     });
   }
   return local;
@@ -115,7 +152,10 @@ window._load = function(){
 
 // Force reload from cloud
 window._forceSync = function(){
-  if(!window.API_URL){alert("URL API non configurato. Vedi istruzioni nel README.");return}
+  if(!window.API_URL){
+    alert("Backend cloud non configurato!\\n\\nI dati sono salvati SOLO su questo browser.\\n\\nPer condividere i dati tra tutti gli utenti:\\n1. Segui le istruzioni nel README del repository GitHub\\n2. Crea un Google Sheet + Apps Script\\n3. Incolla l'URL nella riga API_URL del file index.html\\n\\nDati locali attuali: "+window._SUBS.length+" schede");
+    return;
+  }
   window._syncing=true;
   window.dispatchEvent(new Event("syncStatus"));
   fetch(window.API_URL+"?action=load&t="+Date.now())
@@ -123,10 +163,14 @@ window._forceSync = function(){
   .then(function(d){
     window._syncing=false;window._lastSync=new Date();
     if(d&&Array.isArray(d)){
-      window._SUBS=d;
-      try{localStorage.setItem("ppo_molise",JSON.stringify(d))}catch(e){}
+      // Merge with local
+      var byId={};d.forEach(function(e){if(e&&e.id)byId[e.id]=e});
+      window._SUBS.forEach(function(e){if(e&&e.id&&!byId[e.id])byId[e.id]=e});
+      var merged=Object.keys(byId).map(function(k){return byId[k]});
+      window._SUBS=merged;
+      try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
       window.dispatchEvent(new Event("subsChanged"));
-      alert("Sincronizzazione completata: "+d.length+" schede");
+      alert("Sincronizzazione completata: "+merged.length+" schede");
     }
     window.dispatchEvent(new Event("syncStatus"));
   }).catch(function(e){
@@ -212,15 +256,18 @@ window.AREAS = [
 ];
 
 // Option lists
-window.IMP_STR=["CULTURALE","DIGITALE","ECONOMICO","INFRASTRUTTURALE","SANITARIO","SCIENTIFICO","SOCIALE","SOCIALE culturale","SOCIALE demografico","SOCIALE di genere","SOCIALE economico","SOCIALE educativo ed occupazionale"];
+window.IMP_STR=["AMBIENTALE","CULTURALE","DIGITALE","ECONOMICO","INFRASTRUTTURALE","SANITARIO","SCIENTIFICO","SOCIALE","SOCIALE culturale","SOCIALE demografico","SOCIALE di genere","SOCIALE economico","SOCIALE educativo ed occupazionale","SOCIALE educazione","SOCIALE Istituzionale","SOCIALE occupazionale","SOCIALE relazionale","SOCIALE sicurezza","SOCIALE soggettivo","SOCIALE turistico"];
 window.SPEC_STR=["TRASVERSALE","DI POLICY"];
+window.BES_NAZ=["Ambiente","Benessere economico","Benessere soggettivo","Innovazione ricerca e creativita","Istruzione e formazione","Lavoro e conciliazione tempi di vita","Paesaggio e patrimonio culturale","Politica e istituzioni","Qualita dei servizi","Relazioni sociali","Salute","Sicurezza"];
+window.BES_TER=["Ambiente","Benessere economico","Benessere soggettivo","Innovazione ricerca e creativita","Istruzione e formazione","Lavoro e conciliazione tempi di vita","Paesaggio e patrimonio culturale","Politica e istituzioni","Qualita dei servizi","Relazioni sociali","Salute","Sicurezza"];
+window.LIV_TERR=["Comunale","Provinciale","Regionale","Nazionale"];
 window.EFF_OPR=[{d:"EFFICACIA",items:["Qualita erogata","Qualita fruita","Qualita percepita","Quantita erogata","Quantita fruita"]},{d:"EFFICIENZA",items:["FINANZIARIA","GESTIONALE","TEMPORALE"]},{d:"IMPATTO",items:["AMBIENTALE"]},{d:"SALUTE DELLE RISORSE",items:["DI CLIMA e DI GENERE","DI GENERE","DIGITALE","ECONOMICO-FINANZIARIA","ORGANIZZATIVA","ORGANIZZATIVA AGILE","PROFESSIONALE"]}];
 window.TRV=["Rafforzamento della capacita amministrativa","Digitalizzazione e realizzazione piena accessibilita","Contenimento della spesa e corretta gestione economico finanziaria","Rilevazione del grado di soddisfazione degli utenti","Innalzamento dei livelli di trasparenza e prevenzione fenomeni corruttivi","Conciliazione vita lavorativa/vita privata - lavoro agile","Modernizzazione e miglioramento qualitativo organizzazione","Promozione delle pari opportunita","Smaltimento arretrato e rimozione colli di bottiglia TA 1000"];
 window.STK=["Cittadini e collettivita","Aziende ed imprese private","Enti locali o altre pubbliche amministrazioni","Utenti interni all'amministrazione"];
-window.BES=["Ambiente","Benessere economico","Benessere soggettivo","Innovazione ricerca e creativita","Istruzione e formazione","Lavoro e conciliazione tempi di vita","Paesaggio e patrimonio culturale","Politica e istituzioni","Qualita dei servizi","Relazioni sociali","Salute","Sicurezza"];
+// BES arrays defined above as BES_NAZ and BES_TER
 
 // Empty form templates
-window.emptySTR = function(){return{codice:"",nome:"",peso:"",impatto:[],specifico:[],missione:"",programma:"",trasversali:[],stakeholders:[],stakeAltro:"",deadlineType:"",deadlinePeriodo:"",risultatoFinale:"",indicatore:"",baseline:"",fonte:"",um:"",formula:"",note:"",bes:[]}};
+window.emptySTR = function(){return{codice:"",nome:"",peso:"",tipoAB:"",impatto:[],specifico:[],missione:"",programma:"",trasversali:[],stakeholders:[],stakeAltro:"",deadlineType:"",deadlinePeriodo:"",risultatoFinale:"",indicatore:"",baseline:"",fonte:"",um:"",formula:"",note:"",besNaz:[],besTer:[],livTerr:""}};
 window.emptyOPR = function(){return{codice:"",nome:"",peso:"",deadline:"",stratRif:"",stratRifDesc:"",natura:"",rischio:"",rischioLivello:"",rischioDesc:"",stakeholders:[],stakeAltro:"",importanza:"",indicatore:"",baseline:"",fonte:"",um:"",formula:"",ris2026:"",ris2027:"",ris2028:""}};
 
 // Helpers
@@ -288,9 +335,11 @@ window._mkPDF = function(en){
     // Valore Pubblico
     var impTxt=(d.impatto||[]).join(", ")||"(vedi Allegato OVP - MODALITA)";
     var specTxt=(d.specifico||[]).join(", ")||"";
+    var tipoTxt=d.tipoAB==="A"?"TIPO A - Specifico TRASVERSALE":d.tipoAB==="B"?"TIPO B - Specifico DI POLICY":specTxt;
     doc.autoTable({startY:y,margin:{left:mx,right:5},body:[
-      [{content:"VALORE PUBBLICO\nesterno",styles:bf({cellWidth:28,rowSpan:2,valign:"middle"})},
-       {content:"DIMENSIONI DI IMPATTO",styles:bf({cellWidth:32})},{content:impTxt,colSpan:4,styles:{fontSize:6}}],
+      [{content:"VALORE PUBBLICO\nesterno",styles:bf({cellWidth:28,rowSpan:3,valign:"middle"})},
+       {content:"TIPO OBIETTIVO",styles:bf({cellWidth:32})},{content:tipoTxt,colSpan:4,styles:{fontSize:6.5,fontStyle:"bold"}}],
+      [{content:"DIMENSIONI DI IMPATTO",styles:bf({cellWidth:32})},{content:impTxt,colSpan:4,styles:{fontSize:6}}],
       [{content:"SPECIFICO",styles:bf({cellWidth:32})},{content:specTxt,colSpan:4,styles:{fontSize:6}}]
     ],theme:"grid",styles:s7});y=doc.lastAutoTable.finalY;
 
@@ -330,6 +379,19 @@ window._mkPDF = function(en){
       [{content:"",styles:{cellWidth:22,fillColor:hd}},{content:"",colSpan:5}],
       [{content:"formula",styles:bf({cellWidth:22})},{content:d.formula||"",colSpan:5}]
     ],theme:"grid",styles:s6});y=doc.lastAutoTable.finalY;
+
+    // Livello territoriale + BES
+    var livTxt=d.livTerr||"-";
+    var besNazTxt=(d.besNaz||d.bes||[]).join(", ")||"-";
+    var besTerTxt=(d.besTer||[]).join(", ")||"-";
+    doc.autoTable({startY:y,margin:{left:mx,right:5},body:[
+      [{content:"Livello territoriale",styles:bf({cellWidth:28})},{content:livTxt,colSpan:5}]
+    ],theme:"grid",styles:s7});y=doc.lastAutoTable.finalY;
+
+    doc.autoTable({startY:y,margin:{left:mx,right:5},body:[
+      [{content:"BES Nazionale",styles:bf({cellWidth:28})},{content:besNazTxt,colSpan:5,styles:{fontSize:6}}],
+      [{content:"BES dei Territori",styles:bf({cellWidth:28})},{content:besTerTxt,colSpan:5,styles:{fontSize:6}}]
+    ],theme:"grid",styles:s7});y=doc.lastAutoTable.finalY;
 
     // Note
     doc.autoTable({startY:y,margin:{left:mx,right:5},body:[
@@ -461,8 +523,9 @@ window._mkXLS = function(en){
       // R11 (idx 10): separator
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],
       // R12 (idx 11): Valore Pubblico
-      ["VALORE PUBBLICO esterno","DIMENSIONI DI IMPATTO","","","",(d.impatto||[]).join(", ")||"vedi Allegato OVP - MODALITA","","","","","","","","","","","","","","","","","","","","","",""],
-      // R13-15 (idx 12-14): empty/specifico
+      ["VALORE PUBBLICO esterno","TIPO OBIETTIVO","","","",(d.tipoAB==="A"?"TIPO A - Specifico TRASVERSALE":d.tipoAB==="B"?"TIPO B - Specifico DI POLICY":""),"","","","","","","","","","","","","","","","","","","","","",""],
+      ["","DIMENSIONI DI IMPATTO","","","",(d.impatto||[]).join(", ")||"vedi Allegato OVP - MODALITA","","","","","","","","","","","","","","","","","","","","","",""],
+      // R13-15 (idx 12-14): specifico
       ["","SPECIFICO","","","",(d.specifico||[]).join(", "),"","","","","","","","","","","","","","","","","","","","","",""],
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],
@@ -498,7 +561,11 @@ window._mkXLS = function(en){
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],
       // R31 (idx 30): formula
       ["","","","","","","","","","","","","","formula","",(d.formula||""),"","","","","","","","","","","",""],
-      // R32-33 (idx 31-32): Note
+      // R32-33: Livello territoriale + BES
+      ["Livello territoriale",(d.livTerr||""),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
+      ["BES Nazionale",(d.besNaz||d.bes||[]).join(", "),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
+      ["BES dei Territori",(d.besTer||[]).join(", "),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
+      // Note
       ["Note",(d.note||""),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""]
     ];
@@ -556,7 +623,20 @@ window._mkXLS = function(en){
 // Archive handlers
 window._archivePDF=function(id){var e=window._SUBS.filter(function(s){return s.id===id})[0];if(e)try{window._mkPDF(e)}catch(err){alert("Errore PDF: "+err.message)}};
 window._archiveXLS=function(id){var e=window._SUBS.filter(function(s){return s.id===id})[0];if(e)try{window._mkXLS(e)}catch(err){alert("Errore XLS: "+err.message)}};
-window._archiveDel=function(id){if(!confirm("Eliminare?"))return;window._SUBS=window._SUBS.filter(function(s){return s.id!==id});window._save(window._SUBS);window.dispatchEvent(new Event("subsChanged"))};
+window._archiveDel=function(id){
+  if(!confirm("Eliminare questa scheda?"))return;
+  window._SUBS=window._SUBS.filter(function(s){return s.id!==id});
+  var json=JSON.stringify(window._SUBS);
+  try{localStorage.setItem(window.SK,json);localStorage.setItem(window.SK+"_backup",json)}catch(e){}
+  // Cloud: save with deleted ID info
+  if(window.API_URL){
+    fetch(window.API_URL,{
+      method:"POST",headers:{"Content-Type":"text/plain"},
+      body:JSON.stringify({action:"save",data:window._SUBS,deletedIds:[id]})
+    }).catch(function(e){console.error(e)});
+  }
+  window.dispatchEvent(new Event("subsChanged"));
+};
 window._exportAll=function(){
   var subs=window._SUBS;if(!subs.length){alert("Nessun dato");return}
   var wb=XLSX.utils.book_new();
@@ -579,7 +659,8 @@ window._exportIndicatoriSTR=function(){
     Trasversali:(d.trasversali||[]).join("; "),Stakeholders:(d.stakeholders||[]).join("; "),
     Deadline:d.deadlineType==="fine_mandato"?"Fine mandato":d.deadlineType==="periodo"?d.deadlinePeriodo:"-",
     Risultato_Finale:d.risultatoFinale,Indicatore:d.indicatore,UM:d.um,Baseline:d.baseline,Fonte:d.fonte,Formula:d.formula,
-    BES:(d.bes||[]).join("; "),Note:d.note
+    BES:(d.bes||[]).join("; "),BES_Nazionale:(d.besNaz||[]).join("; "),BES_Territori:(d.besTer||[]).join("; "),
+    Tipo_AB:d.tipoAB||"",Livello_Territoriale:d.livTerr||"",Note:d.note
   }})),"Indicatori Strategici");
   XLSX.writeFile(wb,"Indicatori_Strategici_"+new Date().toISOString().slice(0,10)+".xlsx");
 };
@@ -639,6 +720,14 @@ window._exportPerServizio=function(){
   XLSX.writeFile(wb,"Indicatori_per_Servizio_"+new Date().toISOString().slice(0,10)+".xlsx");
 };
 
+window._archiveEdit=function(id){
+  var e=window._SUBS.filter(function(s){return s.id===id})[0];
+  if(!e){alert("Scheda non trovata");return}
+  // Dispatch custom event with entry data for React to pick up
+  window._pendingAdminEdit=e;
+  window.dispatchEvent(new Event("adminEdit"));
+};
+
 // Event delegation for archive buttons
 document.addEventListener("click",function(evt){
   var b=evt.target;if(!b.dataset||!b.dataset.act||!b.dataset.eid)return;
@@ -646,6 +735,7 @@ document.addEventListener("click",function(evt){
   if(a==="pdf")window._archivePDF(id);
   else if(a==="xls")window._archiveXLS(id);
   else if(a==="del")window._archiveDel(id);
+  else if(a==="edit")window._archiveEdit(id);
 });
 
 // ════════════════════════════════════════════════
@@ -664,16 +754,22 @@ function CG(p){return h("div",{style:{display:"grid",gridTemplateColumns:"repeat
 function StrForm(p){
   var d=p.d,u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
   return h("div",null,
-    h("div",{style:{display:"grid",gridTemplateColumns:"3fr 1fr",gap:10}},
-      h(F,{l:"Codice Obiettivo Strategico",r:1},h("input",{style:IS,value:d.codice,onChange:u("codice"),placeholder:"es. STR.1"})),
-      h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",min:1,max:100,value:d.peso,onChange:u("peso")}))
+    h("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:10}},
+      h(F,{l:"Codice Obiettivo Strategico",r:1},h("input",{style:IS,value:d.codice,onChange:u("codice"),placeholder:"es. III.1.1"})),
+      h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",min:1,max:100,value:d.peso,onChange:u("peso")})),
+      h(F,{l:"Tipo Obiettivo",r:1},h("select",{style:IS,value:d.tipoAB||"",onChange:function(e){
+        var v=e.target.value;var n=Object.assign({},d);n.tipoAB=v;
+        n.specifico=v==="A"?["TRASVERSALE"]:v==="B"?["DI POLICY"]:[];
+        p.s(n);
+      }},h("option",{value:""},"-"),h("option",{value:"A"},"Tipo A - TRASVERSALE"),h("option",{value:"B"},"Tipo B - DI POLICY")))
     ),
+    d.tipoAB?h("div",{style:{background:d.tipoAB==="A"?"#e8f0fe":"#e6f4ed",borderRadius:4,padding:"8px 12px",marginBottom:10,fontSize:12,fontWeight:600,color:d.tipoAB==="A"?"#0066cc":"#008758"}},
+      "Tipo "+d.tipoAB+": Obiettivo Strategico Specifico "+(d.tipoAB==="A"?"TRASVERSALE":"DI POLICY")
+    ):null,
     h(F,{l:"Obiettivo Strategico (NOME/DESCRIZIONE - max 40 parole)",r:1},h("textarea",{style:TS,value:d.nome,onChange:u("nome")})),
     h("div",{className:"cd",style:{padding:12,marginBottom:10}},
       h("div",{style:{fontWeight:700,fontSize:12,color:"#003366",marginBottom:6,borderBottom:"2px solid #003366",paddingBottom:4}},"VALORE PUBBLICO - DIMENSIONI DI IMPATTO"),
-      h(CG,{o:window.IMP_STR,v:d.impatto,fn:u("impatto"),c:3}),
-      h("div",{style:{fontWeight:600,fontSize:11,color:"#5c6f82",marginTop:8,marginBottom:4}},"SPECIFICO"),
-      h(CG,{o:window.SPEC_STR,v:d.specifico,fn:u("specifico"),c:2})
+      h(CG,{o:window.IMP_STR,v:d.impatto,fn:u("impatto"),c:3})
     ),
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
       h(F,{l:"MISSIONE"},h("input",{style:IS,value:d.missione,onChange:u("missione")})),
@@ -696,7 +792,19 @@ function StrForm(p){
       ),
       h(F,{l:"Formula"},h("input",{style:IS,value:d.formula,onChange:u("formula")}))
     ),
-    h(F,{l:"BES (Benessere Equo e Sostenibile)"},h(CG,{o:window.BES,v:d.bes,fn:u("bes"),c:3})),
+    h(F,{l:"Livello territoriale"},h("select",{style:IS,value:d.livTerr||"",onChange:u("livTerr")},
+      h("option",{value:""},"-"),window.LIV_TERR.map(function(l){return h("option",{key:l,value:l},l)})
+    )),
+    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}},
+      h("div",{className:"cd",style:{padding:12}},
+        h("div",{style:{fontWeight:700,fontSize:12,color:"#003366",marginBottom:6,borderBottom:"2px solid #003366",paddingBottom:4}},"BES Nazionale"),
+        h(CG,{o:window.BES_NAZ,v:d.besNaz||[],fn:u("besNaz"),c:2})
+      ),
+      h("div",{className:"cd",style:{padding:12}},
+        h("div",{style:{fontWeight:700,fontSize:12,color:"#008758",marginBottom:6,borderBottom:"2px solid #008758",paddingBottom:4}},"BES dei Territori"),
+        h(CG,{o:window.BES_TER,v:d.besTer||[],fn:u("besTer"),c:2})
+      )
+    ),
     h(F,{l:"Note"},h("textarea",{style:TS,value:d.note,onChange:u("note")}))
   );
 }
@@ -791,8 +899,13 @@ function Dash(p){
   var dlFM=strs.filter(function(x){return x.data.deadlineType==="fine_mandato"}).length;
   var dlPer=strs.filter(function(x){return x.data.deadlineType==="periodo"}).length;
   // BES
-  var besC={};window.BES.forEach(function(b){besC[b]=0});
-  strs.forEach(function(x){(x.data.bes||[]).forEach(function(b){if(besC[b]!==undefined)besC[b]++})});
+  var besNazC={};window.BES_NAZ.forEach(function(b){besNazC[b]=0});
+  strs.forEach(function(x){(x.data.besNaz||x.data.bes||[]).forEach(function(b){if(besNazC[b]!==undefined)besNazC[b]++})});
+  var besTerC={};window.BES_TER.forEach(function(b){besTerC[b]=0});
+  strs.forEach(function(x){(x.data.besTer||[]).forEach(function(b){if(besTerC[b]!==undefined)besTerC[b]++})});
+  // Tipo A/B
+  var tipoA=strs.filter(function(x){return x.data.tipoAB==="A"}).length;
+  var tipoB=strs.filter(function(x){return x.data.tipoAB==="B"}).length;
   // Rischio OPR
   var rNo=0,rSi=0,rAlto=0,rMedio=0,rBasso=0,rTrasc=0,rND=0;
   oprs.forEach(function(x){
@@ -891,8 +1004,18 @@ function Dash(p){
         sec("Stakeholders Coinvolti (Tutti)","#003366"),
         window.STK.map(function(t){return bar(t,stkC[t],s.length,"#003366")}),
         h("div",{style:{marginTop:16}}),
-        sec("BES — Benessere Equo e Sostenibile (Strategici)","#008758"),
-        nS?window.BES.map(function(b){return bar(b,besC[b],nS,"#008758")}):h("div",{style:{color:"#999",fontSize:11}},"--")
+        sec("BES Nazionale (Strategici)","#003366"),
+        nS?window.BES_NAZ.map(function(b){return bar(b,besNazC[b],nS,"#003366")}):h("div",{style:{color:"#999",fontSize:11}},"--"),
+        h("div",{style:{marginTop:12}}),
+        sec("BES dei Territori (Strategici)","#008758"),
+        nS?window.BES_TER.map(function(b){return bar(b,besTerC[b],nS,"#008758")}):h("div",{style:{color:"#999",fontSize:11}},"--"),
+        h("div",{style:{marginTop:12}}),
+        sec("Tipo Obiettivo A/B (Strategici)","#0066cc"),
+        nS?h("div",null,
+          bar("Tipo A - TRASVERSALE",tipoA,nS,"#0066cc"),
+          bar("Tipo B - DI POLICY",tipoB,nS,"#008758"),
+          bar("Non specificato",nS-tipoA-tipoB,nS,"#d9dadb")
+        ):null
       )
     ),
 
@@ -927,9 +1050,9 @@ function Dash(p){
     // ── TABELLA DETTAGLIO INDICATORI STRATEGICI ──
     nS?h("div",{className:"cd",style:{padding:12,marginBottom:12}},
       sec("Dettaglio Indicatori — Obiettivi Strategici","#0066cc"),
-      tbl(["Servizio","Codice","Descrizione","Peso","Impatto","Indicatore","UM","Baseline","Fonte","Deadline"],
+      tbl(["Servizio","Codice","Tipo","Descrizione","Peso","Impatto","Indicatore","UM","Baseline","Fonte","Deadline"],
         strs.map(function(e){var d=e.data;return[
-          e.serviceCode,d.codice||"-",(d.nome||"").substring(0,40),(d.peso||"")+"%",
+          e.serviceCode,d.codice||"-",d.tipoAB?("Tipo "+d.tipoAB):"-",(d.nome||"").substring(0,35),(d.peso||"")+"%",
           (d.impatto||[]).join(", ")||"-",d.indicatore||"-",d.um||"-",d.baseline||"-",d.fonte||"-",
           d.deadlineType==="fine_mandato"?"Fine mandato":d.deadlineType==="periodo"?d.deadlinePeriodo||"Periodo":"-"
         ]}))
@@ -1257,6 +1380,21 @@ function App(){
   var _ch=useState(""),curHash=_ch[0],setCH=_ch[1];
 
   useEffect(function(){var handler=function(){setSubs(window._SUBS.slice())};window.addEventListener("subsChanged",handler);return function(){window.removeEventListener("subsChanged",handler)}},[]);
+  // Admin edit from archive
+  useEffect(function(){
+    var handler=function(){
+      var e=window._pendingAdminEdit;
+      if(!e)return;
+      window._pendingAdminEdit=null;
+      var s=window.findSvc(e.serviceCode);
+      if(s)setSvc(s);
+      setFType(e.type);setFData(Object.assign({},e.data));setFEditId(e.id);setFParentStr(e.parentId||null);
+      setCA("admin");setCH("");
+      setV("form");window.scrollTo(0,0);
+    };
+    window.addEventListener("adminEdit",handler);
+    return function(){window.removeEventListener("adminEdit",handler)};
+  },[]);
   // Sync status
   var _sy=useState(false),syncing=_sy[0],setSyncing=_sy[1];
   useEffect(function(){var h2=function(){setSyncing(window._syncing)};window.addEventListener("syncStatus",h2);return function(){window.removeEventListener("syncStatus",h2)}},[]);
@@ -1271,27 +1409,120 @@ function App(){
   var strWeightSum=0;svcStrs.forEach(function(s){strWeightSum+=parseFloat(s.data.peso)||0});
 
   // ── Credential flow ──
+  // User registry (stored alongside data)
+  var _ur=useState(function(){try{return JSON.parse(localStorage.getItem("ppo_users")||"[]")}catch(e){return[]}}),users=_ur[0],setUsers=_ur[1];
+  var saveUsers=function(u){setUsers(u);try{localStorage.setItem("ppo_users",JSON.stringify(u))}catch(e){}
+    if(window.API_URL){fetch(window.API_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"saveUsers",data:u})}).catch(function(e){})}
+  };
+  // Load users from cloud on mount + auto-migrate from existing entries
+  useEffect(function(){
+    var doMigrate=function(currentUsers,currentSubs){
+      // Extract unique authors from existing entries
+      var byName={};
+      currentUsers.forEach(function(u){byName[u.name]=u});
+      var changed=false;
+      currentSubs.forEach(function(e){
+        var name=e.author||e.createdBy;
+        if(!name||name==="admin")return;
+        if(!byName[name]){
+          byName[name]={
+            name:name,
+            pwd:"(migrato)",
+            hash:e.authorHash||"",
+            registered:e.createdAt||e.timestamp||new Date().toISOString(),
+            lastLogin:e.lastModifiedAt||e.createdAt||e.timestamp||"",
+            migrated:true
+          };
+          changed=true;
+        }
+      });
+      if(changed){
+        var merged=Object.keys(byName).map(function(k){return byName[k]});
+        saveUsers(merged);
+        console.log("Migrated "+merged.length+" users from existing entries");
+      }
+    };
+    // Cloud load first
+    if(window.API_URL){
+      fetch(window.API_URL+"?action=loadUsers&t="+Date.now()).then(function(r){return r.json()}).then(function(d){
+        if(d&&Array.isArray(d)&&d.length){
+          var byName={};d.forEach(function(u){byName[u.name]=u});
+          users.forEach(function(u){if(!byName[u.name])byName[u.name]=u});
+          var merged=Object.keys(byName).map(function(k){return byName[k]});
+          setUsers(merged);try{localStorage.setItem("ppo_users",JSON.stringify(merged))}catch(e){}
+          // Then migrate any missing authors
+          doMigrate(merged,window._SUBS);
+        } else {
+          // Cloud empty, migrate from entries
+          doMigrate(users,window._SUBS);
+        }
+      }).catch(function(e){
+        // Cloud failed, migrate locally
+        doMigrate(users,window._SUBS);
+      });
+    } else {
+      // No cloud, migrate locally
+      setTimeout(function(){doMigrate(users,window._SUBS)},500);
+    }
+  },[]);
+
+  // Register/update user in registry
+  var registerUser=function(name,pwd,hash){
+    var found=false;
+    var updated=users.map(function(u){if(u.name===name){found=true;return{name:name,pwd:pwd,hash:hash,lastLogin:new Date().toISOString()}}return u});
+    if(!found)updated.push({name:name,pwd:pwd,hash:hash,registered:new Date().toISOString(),lastLogin:new Date().toISOString()});
+    saveUsers(updated);
+  };
+
+  // Admin state for creating schede for users
+  var _adminSvc=useState(null),adminSvc=_adminSvc[0],setAdminSvc=_adminSvc[1];
+  var _adminUser=useState(""),adminUser=_adminUser[0],setAdminUser=_adminUser[1];
+
   // For NEW: ask name + password (user creates mini-account)
   var askCredNew=function(action){
+    if(logged){
+      // Admin: skip credential modal, show user picker
+      setAN("admin");setAP("");setAE("");setPA({action:action,mode:"admin_new"});setCM(true);
+      return;
+    }
     setAN("");setAP("");setAE("");setPA({action:action,mode:"new"});setCM(true);
   };
-  // For EDIT: ask password only (must match stored hash)
+  // For EDIT: admin bypasses, users need password
   var askCredEdit=function(entry,action){
+    if(logged){
+      // Admin: direct edit, no password needed
+      setCA("admin");setCH("");
+      action("admin","");
+      return;
+    }
     setAN(entry.author||"");setAP("");setAE("");setPA({action:action,mode:"edit",entry:entry});setCM(true);
   };
   // Confirm credentials
   var confirmCred=function(){
+    if(pendingAction.mode==="admin_new"){
+      // Admin creating for a user - look up their hash from registry
+      if(!authName.trim()){setAE("Seleziona o scrivi il nome dell'utente");return}
+      var userName=authName.trim();
+      var userHash="";
+      // Find existing user's hash so they can edit with their password
+      for(var i=0;i<users.length;i++){
+        if(users[i].name===userName){userHash=users[i].hash||"";break}
+      }
+      setCA(userName);setCH(userHash);setCM(false);
+      pendingAction.action(userName,userHash);
+      return;
+    }
     if(!authName.trim()){setAE("Inserisci Nome e Cognome");return}
     if(!authPwd.trim()||authPwd.length<3){setAE("Password richiesta (min 3 caratteri)");return}
     var hash=window._hash(authPwd);
     if(pendingAction.mode==="edit"){
-      // Check password matches
       if(pendingAction.entry.authorHash&&pendingAction.entry.authorHash!==hash){
         setAE("Password non corretta. Solo l'autore puo modificare.");return;
       }
     }
+    // Save to user registry
+    registerUser(authName.trim(),authPwd,hash);
     setCA(authName.trim());setCH(hash);setCM(false);
-    // Execute pending action
     pendingAction.action(authName.trim(),hash);
   };
 
@@ -1320,15 +1551,22 @@ function App(){
     var area=window.findArea(svc.code);
     var now=new Date().toISOString();
     if(fEditId){
-      // Update existing - add modification record
+      // Update existing - add modification record, preserve original author
       var updated=subs.map(function(s){
         if(s.id===fEditId){
-          var hist=(s.modifications||[]).concat([{by:curAuthor,at:now}]);
-          return Object.assign({},s,{data:Object.assign({},fData),lastModifiedBy:curAuthor,lastModifiedAt:now,modifications:hist});
+          var hist=(s.modifications||[]).concat([{by:logged?"admin (per "+s.author+")":curAuthor,at:now}]);
+          // Admin edit: keep original author/authorHash so user can still edit with their password
+          // User edit: if authorHash was empty (admin-created), set it now
+          var upd={data:Object.assign({},fData),lastModifiedBy:logged?"admin":curAuthor,lastModifiedAt:now,modifications:hist};
+          if(!logged && curHash && !s.authorHash){
+            // User is setting their password for first time on an admin-created entry
+            upd.authorHash=curHash;
+          }
+          return Object.assign({},s,upd);
         }return s;
       });
       setSubs(updated);window._save(updated);
-      flash("Aggiornato da "+curAuthor+"!");
+      flash("Aggiornato"+(logged?" da admin":"")+"!");
     } else {
       // New entry with author info
       var en={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
@@ -1369,6 +1607,7 @@ function App(){
     archHTML+='</div><div style="display:flex;gap:3px;flex-shrink:0">';
     archHTML+='<button data-act="pdf" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#fff;color:#0066cc;border:1.5px solid #0066cc;border-radius:3px;cursor:pointer">PDF</button>';
     archHTML+='<button data-act="xls" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#fff;color:#008758;border:1.5px solid #008758;border-radius:3px;cursor:pointer">XLS</button>';
+    archHTML+='<button data-act="edit" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#e8f0fe;color:#0066cc;border:1.5px solid #0066cc;border-radius:3px;cursor:pointer">Modifica</button>';
     archHTML+='<button data-act="del" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;background:none;border:1px solid #d9364f;border-radius:3px;color:#d9364f;cursor:pointer" title="Elimina questa scheda">Elimina</button>';
     archHTML+='</div></div></div>';
   })}
@@ -1378,27 +1617,43 @@ function App(){
 
     // Credential Modal
     credModal?h("div",{style:{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center"}},
-      h("div",{className:"cd",style:{padding:24,width:400,maxWidth:"90vw"}},
+      h("div",{className:"cd",style:{padding:24,width:420,maxWidth:"90vw"}},
         h("h3",{style:{fontSize:16,fontWeight:700,color:"#003366",marginBottom:4}},
+          pendingAction&&pendingAction.mode==="admin_new"?"Admin: Inserisci scheda per utente":
           pendingAction&&pendingAction.mode==="edit"?"Verifica Credenziali":"Inserisci le tue Credenziali"),
         h("p",{style:{fontSize:12,color:"#5c6f82",marginBottom:14}},
+          pendingAction&&pendingAction.mode==="admin_new"?
+          "Seleziona un utente esistente o scrivi un nuovo nome. La scheda sara assegnata a questo utente.":
           pendingAction&&pendingAction.mode==="edit"?
           "Per modificare questa scheda inserisci la password usata alla creazione.":
           "Queste credenziali ti serviranno per modificare la scheda in futuro."),
         authErr?h("div",{style:{background:"#fef2f4",border:"1px solid #d9364f",borderRadius:4,padding:"6px 10px",marginBottom:10,color:"#d9364f",fontSize:12,fontWeight:600}},authErr):null,
+        // Name field - for admin, show dropdown of existing users
         h("div",{style:{marginBottom:10}},
-          h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},"Nome e Cognome"),
-          h("input",{style:Object.assign({},IS,{background:pendingAction&&pendingAction.mode==="edit"?"#f0f0f0":"#fff"}),
-            value:authName,onChange:function(e){setAN(e.target.value)},
-            readOnly:pendingAction&&pendingAction.mode==="edit",
-            placeholder:"es. Mario Rossi"})
+          h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},
+            pendingAction&&pendingAction.mode==="admin_new"?"Assegna a utente":"Nome e Cognome"),
+          pendingAction&&pendingAction.mode==="admin_new"?
+            h("div",null,
+              h("select",{style:Object.assign({},IS,{marginBottom:6}),value:authName,onChange:function(e){setAN(e.target.value)}},
+                h("option",{value:""},"-- Seleziona utente esistente --"),
+                h("option",{value:"admin"},"admin"),
+                users.map(function(u){return h("option",{key:u.name,value:u.name},u.name)})
+              ),
+              h("input",{style:IS,value:authName,onChange:function(e){setAN(e.target.value)},placeholder:"...oppure scrivi nuovo nome"})
+            ):
+            h("input",{style:Object.assign({},IS,{background:pendingAction&&pendingAction.mode==="edit"?"#f0f0f0":"#fff"}),
+              value:authName,onChange:function(e){setAN(e.target.value)},
+              readOnly:pendingAction&&pendingAction.mode==="edit",
+              placeholder:"es. Mario Rossi"})
         ),
-        h("div",{style:{marginBottom:14}},
-          h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},"Password"),
-          h("input",{style:IS,type:"password",value:authPwd,onChange:function(e){setAP(e.target.value)},
-            onKeyDown:function(e){if(e.key==="Enter")confirmCred()},
-            placeholder:pendingAction&&pendingAction.mode==="edit"?"Inserisci la password":"Scegli una password (min 3 caratteri)"})
-        ),
+        // Password field (not needed for admin_new)
+        pendingAction&&pendingAction.mode!=="admin_new"?
+          h("div",{style:{marginBottom:14}},
+            h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},"Password"),
+            h("input",{style:IS,type:"password",value:authPwd,onChange:function(e){setAP(e.target.value)},
+              onKeyDown:function(e){if(e.key==="Enter")confirmCred()},
+              placeholder:pendingAction&&pendingAction.mode==="edit"?"Inserisci la password":"Scegli una password (min 3 caratteri)"})
+          ):null,
         h("div",{style:{display:"flex",gap:8}},
           h("button",{onClick:confirmCred,style:{flex:1,padding:"10px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Conferma"),
           h("button",{onClick:function(){setCM(false);setPA(null)},style:{flex:1,padding:"10px",background:"#fff",color:"#5c6f82",border:"1.5px solid #d9dadb",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Annulla")
@@ -1425,11 +1680,15 @@ function App(){
     h("main",{style:{maxWidth:1080,margin:"0 auto",padding:"16px 14px 40px",flex:1,width:"100%"}},
 
       // Cloud config warning
-      !isCloudOK?h("div",{style:{background:"#fff3cd",border:"1px solid #ffc107",borderRadius:4,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#856404"}},
-        h("b",null,"Attenzione: Modalita locale."),
-        " I dati sono salvati solo su QUESTO browser. Per condividere i dati tra tutti gli utenti, configura il backend cloud (Google Sheets). ",
-        h("a",{href:"https://github.com",target:"_blank",style:{color:"#0066cc",fontWeight:600}},"Vedi istruzioni nel README"),
-        " oppure clicca il bottone ",h("b",null,"'Locale'")," in alto a destra."
+      !isCloudOK?h("div",{style:{background:"#fef2f4",border:"2px solid #d9364f",borderRadius:4,padding:"12px 16px",marginBottom:14,fontSize:12,color:"#721c24"}},
+        h("div",{style:{fontWeight:700,fontSize:14,marginBottom:4}},"ATTENZIONE: I dati NON sono condivisi tra utenti diversi!"),
+        h("div",null,"I dati sono salvati solo su QUESTO browser. Se un altro utente apre la pagina da un altro computer, non vedra nulla."),
+        h("div",{style:{marginTop:6,fontWeight:600}},"Per risolvere: configura il backend cloud (Google Sheets). Ci vogliono 5 minuti."),
+        h("div",{style:{marginTop:4}},
+          h("a",{href:"https://github.com",target:"_blank",style:{color:"#0066cc",fontWeight:600}},"Leggi le istruzioni nel README del repository"),
+          " oppure clicca il bottone ",h("b",{style:{color:"#d9364f"}},"'Locale'")," in alto a destra."
+        ),
+        h("div",{style:{marginTop:6,fontSize:11,color:"#5c6f82"}},"Dati locali attualmente presenti: "+subs.length+" schede")
       ):null,
 
       // LOGIN
@@ -1532,17 +1791,137 @@ function App(){
       // ARCHIVE
       v==="archive"&&logged?h("div",null,
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
-          h("div",null,h("h1",{style:{fontFamily:"Lora,serif",fontSize:18,fontWeight:700}},"Archivio & Dashboard"),h("p",{style:{color:"#5c6f82",fontSize:11}},subs.length+" schede")),
+          h("div",null,h("h1",{style:{fontFamily:"Lora,serif",fontSize:18,fontWeight:700}},"Pannello Admin"),h("p",{style:{color:"#5c6f82",fontSize:11}},subs.length+" schede | "+users.length+" utenti registrati")),
           h("div",{style:{display:"flex",gap:4}},
             h("button",{onClick:function(){window._exportAll()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto")
           )
         ),
-        h("div",{style:{borderBottom:"1px solid #d9dadb",marginBottom:12,display:"flex"}},
+        h("div",{style:{borderBottom:"1px solid #d9dadb",marginBottom:12,display:"flex",flexWrap:"wrap"}},
           h("button",{className:"tb"+(aTab==="dashboard"?" ac":""),onClick:function(){setATab("dashboard")}},"Dashboard"),
-          h("button",{className:"tb"+(aTab==="list"?" ac":""),onClick:function(){setATab("list")}},"Schede ("+subs.length+")")
+          h("button",{className:"tb"+(aTab==="list"?" ac":""),onClick:function(){setATab("list")}},"Schede ("+subs.length+")"),
+          h("button",{className:"tb"+(aTab==="users"?" ac":""),onClick:function(){setATab("users")}},"Utenti ("+users.length+")"),
+          h("button",{className:"tb"+(aTab==="admin_create"?" ac":""),onClick:function(){setATab("admin_create")}},"+ Inserisci Scheda")
         ),
         aTab==="dashboard"?(subs.length?h(Dash,{subs:subs}):h("div",{className:"cd",style:{textAlign:"center",padding:40}},"Compila almeno una scheda")):null,
-        aTab==="list"?(subs.length?h("div",{dangerouslySetInnerHTML:{__html:archHTML}}):h("div",{className:"cd",style:{textAlign:"center",padding:40}},"Nessuna scheda")):null
+        aTab==="list"?(subs.length?h("div",{dangerouslySetInnerHTML:{__html:archHTML}}):h("div",{className:"cd",style:{textAlign:"center",padding:40}},"Nessuna scheda")):null,
+
+        // ── TAB UTENTI ──
+        aTab==="users"?h("div",null,
+          h("div",{className:"cd",style:{padding:14,marginBottom:12}},
+            h("div",{style:{fontWeight:700,fontSize:14,color:"#003366",marginBottom:10,paddingBottom:6,borderBottom:"2px solid #003366"}},"Utenti Registrati"),
+            users.length?h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:12}},
+              h("thead",null,h("tr",null,
+                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Nome"),
+                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Password"),
+                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Registrato il"),
+                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Ultimo accesso"),
+                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"N. Schede"),
+                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Servizi")
+              )),
+              h("tbody",null,users.map(function(u,i){
+                var uSubs=subs.filter(function(s){return s.author===u.name||s.createdBy===u.name});
+                var uSvcs={};uSubs.forEach(function(s){uSvcs[s.serviceCode]=true});
+                return h("tr",{key:u.name,style:{background:i%2?"#f8f9fa":"#fff"}},
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontWeight:600}},u.name),
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontFamily:"monospace",color:u.pwd==="(migrato)"?"#b8860b":"#d9364f"}},u.pwd==="(migrato)"?"(pwd precedente - hash: "+u.hash+")":u.pwd||"(hash: "+u.hash+")"),
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.registered?new Date(u.registered).toLocaleString("it-IT"):"-"),
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.lastLogin?new Date(u.lastLogin).toLocaleString("it-IT"):"-"),
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontWeight:700}},uSubs.length),
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:10}},Object.keys(uSvcs).join(", ")||"-")
+                );
+              }))
+            ):h("div",{style:{color:"#5c6f82",textAlign:"center",padding:20}},"Nessun utente registrato. Gli utenti si registrano compilando la prima scheda."),
+            // Also show entries without a registered user
+            (function(){
+              var regNames={};users.forEach(function(u){regNames[u.name]=true});
+              var orphans=subs.filter(function(s){return s.author&&!regNames[s.author]});
+              var orphanAuthors={};orphans.forEach(function(s){orphanAuthors[s.author]=true});
+              if(Object.keys(orphanAuthors).length===0)return null;
+              return h("div",{style:{marginTop:12,padding:10,background:"#fff3cd",borderRadius:4,fontSize:11}},
+                h("b",null,"Autori senza credenziali registrate: "),
+                Object.keys(orphanAuthors).join(", "),
+                " (schede create prima del sistema credenziali)"
+              );
+            })()
+          ),
+          // User detail: schede per utente
+          h("div",{className:"cd",style:{padding:14}},
+            h("div",{style:{fontWeight:700,fontSize:14,color:"#003366",marginBottom:10,paddingBottom:6,borderBottom:"2px solid #003366"}},"Schede per Utente"),
+            (function(){
+              var byAuthor={};subs.forEach(function(s){var a=s.createdBy||s.author||"(sconosciuto)";if(!byAuthor[a])byAuthor[a]=[];byAuthor[a].push(s)});
+              return Object.keys(byAuthor).sort().map(function(author){
+                var items=byAuthor[author];
+                return h("div",{key:author,style:{marginBottom:12,borderLeft:"3px solid #0066cc",paddingLeft:10}},
+                  h("div",{style:{fontWeight:700,fontSize:12,color:"#0066cc",marginBottom:4}},author+" ("+items.length+" schede)"),
+                  h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:10}},
+                    h("thead",null,h("tr",null,
+                      ["Tipo","Servizio","Codice","Descrizione","Peso","Data"].map(function(hd,i){
+                        return h("th",{key:i,style:{padding:"3px 6px",background:"#f0f4fa",textAlign:"left",fontSize:9,borderBottom:"1px solid #d9dadb"}},hd);
+                      })
+                    )),
+                    h("tbody",null,items.map(function(e,i){
+                      return h("tr",{key:e.id,style:{background:i%2?"#fafafa":"#fff"}},
+                        h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee"}},h("span",{className:"tag "+(e.type==="strategic"?"tag-str":"tag-opr")},e.type==="strategic"?"STR":"OPR")),
+                        h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee"}},e.serviceCode),
+                        h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee",fontFamily:"monospace"}},e.data.codice||"-"),
+                        h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee"}},(e.data.nome||"-").substring(0,40)),
+                        h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee"}},(e.data.peso||"-")+"%"),
+                        h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee",fontSize:9}},new Date(e.timestamp).toLocaleString("it-IT"))
+                      );
+                    }))
+                  )
+                );
+              });
+            })()
+          )
+        ):null,
+
+        // ── TAB INSERISCI SCHEDA (ADMIN) ──
+        aTab==="admin_create"?h("div",null,
+          h("div",{className:"cd",style:{padding:16}},
+            h("div",{style:{fontWeight:700,fontSize:14,color:"#003366",marginBottom:12,paddingBottom:6,borderBottom:"2px solid #003366"}},"Inserisci Nuova Scheda come Admin"),
+            h("p",{style:{fontSize:12,color:"#5c6f82",marginBottom:14}},"Seleziona il servizio, poi potrai compilare la scheda. Sara assegnata all'utente che sceglierai."),
+            h("div",{style:{marginBottom:14}},
+              h("label",{style:{fontWeight:600,fontSize:12,display:"block",marginBottom:4}},"Seleziona Servizio"),
+              h("select",{style:IS,value:adminSvc?adminSvc.code:"",onChange:function(e){
+                var code=e.target.value;if(!code){setAdminSvc(null);return}
+                var s=window.findSvc(code);setAdminSvc(s);
+              }},
+                h("option",{value:""},"-- Scegli servizio --"),
+                window.AREAS.map(function(a){
+                  return h("optgroup",{key:a.code,label:a.code+" - "+a.name},
+                    a.svcs.map(function(s){return h("option",{key:s.code,value:s.code},s.code+" - "+s.name)})
+                  );
+                })
+              )
+            ),
+            adminSvc?h("div",null,
+              h("div",{style:{background:"#e8f0fe",borderRadius:4,padding:"10px 14px",marginBottom:14}},
+                h("span",{style:{fontWeight:700,fontFamily:"monospace",color:"#0066cc"}},adminSvc.code),
+                h("span",{style:{marginLeft:8,fontWeight:600}},adminSvc.name)
+              ),
+              h("div",{style:{display:"flex",gap:8}},
+                h("button",{onClick:function(){
+                  setSvc(adminSvc);
+                  newStr();
+                },style:{padding:"10px 20px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer"}},"Nuovo Ob. Strategico"),
+                h("button",{onClick:function(){
+                  // Show existing strategics to link OPR
+                  var existStrs=subs.filter(function(s){return s.type==="strategic"&&s.serviceCode===adminSvc.code});
+                  if(!existStrs.length){alert("Prima inserisci almeno un obiettivo strategico per questo servizio");return}
+                  var msg="Seleziona l'ob. strategico di riferimento:\n\n";
+                  existStrs.forEach(function(s,i){msg+=(i+1)+") "+s.data.codice+" - "+s.data.nome.substring(0,60)+"\n"});
+                  var choice=prompt(msg+"\nInserisci il numero:");
+                  if(!choice)return;
+                  var idx=parseInt(choice)-1;
+                  if(isNaN(idx)||idx<0||idx>=existStrs.length){alert("Scelta non valida");return}
+                  setSvc(adminSvc);
+                  newOpr(existStrs[idx]);
+                },style:{padding:"10px 20px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer"}},"Nuovo Ob. Operativo")
+              )
+            ):null
+          )
+        ):null
       ):null
     ),
 

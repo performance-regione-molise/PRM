@@ -765,6 +765,17 @@ function CG(p){return h("div",{style:{display:"grid",gridTemplateColumns:"repeat
   p.o.map(function(x){return h("label",{key:x,style:{display:"flex",alignItems:"center",gap:4,cursor:"pointer",fontSize:12}},
     h("input",{type:"checkbox",checked:(p.v||[]).indexOf(x)>=0,onChange:function(){p.fn((p.v||[]).indexOf(x)>=0?p.v.filter(function(z){return z!==x}):p.v.concat([x]))},style:{accentColor:"#0066cc"}}),x)}))}
 
+// Password cell with eye toggle
+function PwdCell(p){
+  var _s=useState(false),show=_s[0],setShow=_s[1];
+  var pwd=p.pwd,migrated=p.migrated;
+  if(migrated)return h("span",{style:{color:"#b8860b",fontSize:11}},"(pwd precedente)");
+  if(!pwd)return h("span",{style:{color:"#999",fontSize:11}},"(no pwd)");
+  return h("div",{style:{display:"flex",alignItems:"center",gap:4}},
+    h("span",{style:{fontFamily:"monospace",fontSize:11,color:"#d9364f",minWidth:60}},show?pwd:"********"),
+    h("button",{onClick:function(){setShow(!show)},style:{background:"none",border:"1px solid #d9dadb",borderRadius:3,cursor:"pointer",padding:"1px 6px",fontSize:9,color:"#5c6f82"}},show?"Nascondi":"Mostra")
+  );
+}
 // ═══ STRATEGIC FORM (Allegato 2) ═══
 function StrForm(p){
   var d=p.d,u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
@@ -1902,7 +1913,7 @@ function App(){
                       }
                     })
                   ),
-                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontFamily:"monospace",fontSize:11,color:u.pwd==="(migrato)"?"#b8860b":"#d9364f"}},u.pwd==="(migrato)"?"(pwd precedente)":u.pwd||"(hash: "+u.hash+")"),
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1"}},h(PwdCell,{pwd:u.pwd,migrated:u.pwd==="(migrato)"})),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.registered?new Date(u.registered).toLocaleString("it-IT"):"-"),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.lastLogin?new Date(u.lastLogin).toLocaleString("it-IT"):"-"),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontWeight:700}},uSubs.length),

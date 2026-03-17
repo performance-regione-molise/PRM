@@ -36,7 +36,7 @@ button{font-family:inherit}
 // STORAGE: Cloud (Google Apps Script) + localStorage with backup protection
 // ════════════════════════════════════════════════
 // ISTRUZIONI: Incolla qui sotto l'URL del tuo Google Apps Script Web App
-window.API_URL = "https://script.google.com/macros/s/AKfycbxGK0nRlgDAi6LFC7pLPxNKlo2YFp9Lm-pfCAWUPwsfluGMhs3tD3NApD-gzUGb3X-6/exec"; // <── INCOLLA QUI IL TUO URL (es: "https://script.google.com/macros/s/XXXXXXX/exec")
+window.API_URL = "https://script.google.com/macros/s/AKfycbx7c2Q-pel1JLrZT2uQdbJ1oFapkNTUMZufVzaAkbxBd0rV-v8m7RS9o-2-SwGv2W8T_Q/exec"; // <── INCOLLA QUI IL TUO URL (es: "https://script.google.com/macros/s/XXXXXXX/exec")
 
 window.SK = "ppo_molise";
 window._SUBS = [];
@@ -49,26 +49,41 @@ window._save = function(s){
   var json = JSON.stringify(s);
   try{
     localStorage.setItem(window.SK, json);
-    // Also save timestamped backup to prevent data loss
     localStorage.setItem(window.SK + "_backup", json);
     localStorage.setItem(window.SK + "_ts", new Date().toISOString());
     localStorage.setItem(window.SK + "_count", String(s.length));
   }catch(e){ console.error("localStorage save error:", e); }
-  // Cloud save
+  // Cloud save via no-cors (critical fix for Google Apps Script 302 redirect)
   if(window.API_URL){
     window._syncing = true;
     window.dispatchEvent(new Event("syncStatus"));
     fetch(window.API_URL, {
       method:"POST",
+      mode:"no-cors",
       headers:{"Content-Type":"text/plain"},
       body:JSON.stringify({action:"save",data:s})
-    }).then(function(r){return r.text()}).then(function(){
+    }).then(function(){
+      // no-cors gives opaque response, so verify with a GET
+      return fetch(window.API_URL+"?action=load&t="+Date.now());
+    }).then(function(r){return r.json()}).then(function(cloud){
       window._syncing=false; window._lastSync=new Date();
+      if(cloud&&Array.isArray(cloud)&&cloud.length>=s.length){
+        console.log("Cloud save VERIFIED: "+cloud.length+" entries");
+      } else {
+        console.warn("Cloud save may have failed. Cloud has "+(cloud?cloud.length:0)+", expected "+s.length+". Retrying...");
+        // Retry once
+        setTimeout(function(){
+          fetch(window.API_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"save",data:window._SUBS})})
+          .then(function(){console.log("Retry save sent")})
+          .catch(function(e){console.error("Retry failed:",e)});
+        },2000);
+      }
       window.dispatchEvent(new Event("syncStatus"));
     }).catch(function(e){
       window._syncing=false;
       window.dispatchEvent(new Event("syncStatus"));
       console.error("Cloud save error:",e);
+      alert("ATTENZIONE: Salvataggio cloud potrebbe non essere riuscito.\nI dati sono salvati localmente.\nErrore: "+e.message+"\n\nRiprova cliccando il bottone Cloud/Sync in alto.");
     });
   }
 };
@@ -631,7 +646,7 @@ window._archiveDel=function(id){
   // Cloud: save with deleted ID info
   if(window.API_URL){
     fetch(window.API_URL,{
-      method:"POST",headers:{"Content-Type":"text/plain"},
+      method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
       body:JSON.stringify({action:"save",data:window._SUBS,deletedIds:[id]})
     }).catch(function(e){console.error(e)});
   }
@@ -1373,8 +1388,12 @@ function App(){
   var _cm=useState(false),credModal=_cm[0],setCM=_cm[1];
   var _an=useState(""),authName=_an[0],setAN=_an[1];
   var _ap=useState(""),authPwd=_ap[0],setAP=_ap[1];
+  var _aem=useState(""),authEmail=_aem[0],setAEM=_aem[1];
   var _ae=useState(""),authErr=_ae[0],setAE=_ae[1];
   var _pa=useState(null),pendingAction=_pa[0],setPA=_pa[1];
+  var _fp=useState(false),forgotMode=_fp[0],setFP=_fp[1];
+  var _fpn=useState(""),forgotName=_fpn[0],setFPN=_fpn[1];
+  var _fps=useState(""),forgotStatus=_fps[0],setFPS=_fps[1];
   // Current session author (saved after credential check)
   var _ca=useState(""),curAuthor=_ca[0],setCA=_ca[1];
   var _ch=useState(""),curHash=_ch[0],setCH=_ch[1];
@@ -1412,7 +1431,7 @@ function App(){
   // User registry (stored alongside data)
   var _ur=useState(function(){try{return JSON.parse(localStorage.getItem("ppo_users")||"[]")}catch(e){return[]}}),users=_ur[0],setUsers=_ur[1];
   var saveUsers=function(u){setUsers(u);try{localStorage.setItem("ppo_users",JSON.stringify(u))}catch(e){}
-    if(window.API_URL){fetch(window.API_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"saveUsers",data:u})}).catch(function(e){})}
+    if(window.API_URL){fetch(window.API_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"saveUsers",data:u})}).catch(function(e){console.error("saveUsers error:",e)})}
   };
   // Load users from cloud on mount + auto-migrate from existing entries
   useEffect(function(){
@@ -1467,10 +1486,10 @@ function App(){
   },[]);
 
   // Register/update user in registry
-  var registerUser=function(name,pwd,hash){
+  var registerUser=function(name,pwd,hash,email){
     var found=false;
-    var updated=users.map(function(u){if(u.name===name){found=true;return{name:name,pwd:pwd,hash:hash,lastLogin:new Date().toISOString()}}return u});
-    if(!found)updated.push({name:name,pwd:pwd,hash:hash,registered:new Date().toISOString(),lastLogin:new Date().toISOString()});
+    var updated=users.map(function(u){if(u.name===name){found=true;return{name:name,pwd:pwd,hash:hash,email:email||u.email||"",lastLogin:new Date().toISOString(),registered:u.registered||new Date().toISOString()}}return u});
+    if(!found)updated.push({name:name,pwd:pwd,hash:hash,email:email||"",registered:new Date().toISOString(),lastLogin:new Date().toISOString()});
     saveUsers(updated);
   };
 
@@ -1481,21 +1500,19 @@ function App(){
   // For NEW: ask name + password (user creates mini-account)
   var askCredNew=function(action){
     if(logged){
-      // Admin: skip credential modal, show user picker
-      setAN("admin");setAP("");setAE("");setPA({action:action,mode:"admin_new"});setCM(true);
+      setAN("admin");setAP("");setAEM("");setAE("");setFP(false);setPA({action:action,mode:"admin_new"});setCM(true);
       return;
     }
-    setAN("");setAP("");setAE("");setPA({action:action,mode:"new"});setCM(true);
+    setAN("");setAP("");setAEM("");setAE("");setFP(false);setPA({action:action,mode:"new"});setCM(true);
   };
   // For EDIT: admin bypasses, users need password
   var askCredEdit=function(entry,action){
     if(logged){
-      // Admin: direct edit, no password needed
       setCA("admin");setCH("");
       action("admin","");
       return;
     }
-    setAN(entry.author||"");setAP("");setAE("");setPA({action:action,mode:"edit",entry:entry});setCM(true);
+    setAN(entry.author||"");setAP("");setAEM("");setAE("");setFP(false);setPA({action:action,mode:"edit",entry:entry});setCM(true);
   };
   // Confirm credentials
   var confirmCred=function(){
@@ -1520,10 +1537,30 @@ function App(){
         setAE("Password non corretta. Solo l'autore puo modificare.");return;
       }
     }
-    // Save to user registry
-    registerUser(authName.trim(),authPwd,hash);
+    // Email optional - admin can add it later from Utenti panel
+    registerUser(authName.trim(),authPwd,hash,authEmail.trim());
     setCA(authName.trim());setCH(hash);setCM(false);
     pendingAction.action(authName.trim(),hash);
+  };
+
+  // Forgot password: send email via Apps Script
+  var sendForgotPwd=function(){
+    if(!forgotName.trim()){setFPS("Inserisci il tuo Nome e Cognome");return}
+    var found=null;
+    for(var i=0;i<users.length;i++){if(users[i].name===forgotName.trim())found=users[i]}
+    if(!found){setFPS("Utente non trovato. Verifica il nome inserito.");return}
+    if(!found.email){setFPS("Nessuna email associata a questo utente. Contatta l'amministratore.");return}
+    if(!found.pwd||found.pwd==="(migrato)"){setFPS("Password non disponibile. Contatta l'amministratore.");return}
+    setFPS("Invio in corso...");
+    if(!window.API_URL){setFPS("Backend cloud non configurato. Contatta l'amministratore.");return}
+    fetch(window.API_URL,{
+      method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
+      body:JSON.stringify({action:"sendPassword",name:found.name,email:found.email,pwd:found.pwd})
+    }).then(function(){
+      setFPS("Email inviata a "+found.email+"! Controlla anche la cartella spam.");
+    }).catch(function(e){
+      setFPS("Errore invio. Contatta l'amministratore.");
+    });
   };
 
   // Start new STR (with credential check)
@@ -1617,46 +1654,74 @@ function App(){
 
     // Credential Modal
     credModal?h("div",{style:{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center"}},
-      h("div",{className:"cd",style:{padding:24,width:420,maxWidth:"90vw"}},
-        h("h3",{style:{fontSize:16,fontWeight:700,color:"#003366",marginBottom:4}},
-          pendingAction&&pendingAction.mode==="admin_new"?"Admin: Inserisci scheda per utente":
-          pendingAction&&pendingAction.mode==="edit"?"Verifica Credenziali":"Inserisci le tue Credenziali"),
-        h("p",{style:{fontSize:12,color:"#5c6f82",marginBottom:14}},
-          pendingAction&&pendingAction.mode==="admin_new"?
-          "Seleziona un utente esistente o scrivi un nuovo nome. La scheda sara assegnata a questo utente.":
+      h("div",{className:"cd",style:{padding:24,width:440,maxWidth:"90vw"}},
+        // Forgot password sub-view
+        forgotMode?h("div",null,
+          h("h3",{style:{fontSize:16,fontWeight:700,color:"#003366",marginBottom:8}},"Recupero Password"),
+          h("p",{style:{fontSize:12,color:"#5c6f82",marginBottom:14}},"Inserisci il tuo Nome e Cognome. La password verra inviata alla tua email."),
+          forgotStatus?h("div",{style:{background:forgotStatus.indexOf("inviata")>=0?"#d4edda":"#fef2f4",border:"1px solid "+(forgotStatus.indexOf("inviata")>=0?"#28a745":"#d9364f"),borderRadius:4,padding:"8px 10px",marginBottom:10,fontSize:12,fontWeight:600,color:forgotStatus.indexOf("inviata")>=0?"#155724":"#721c24"}},forgotStatus):null,
+          h("div",{style:{marginBottom:12}},
+            h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},"Nome e Cognome"),
+            h("input",{style:IS,value:forgotName,onChange:function(e){setFPN(e.target.value)},placeholder:"es. Mario Rossi"})
+          ),
+          h("div",{style:{display:"flex",gap:8}},
+            h("button",{onClick:sendForgotPwd,style:{flex:1,padding:"10px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Invia Password"),
+            h("button",{onClick:function(){setFP(false);setFPS("")},style:{flex:1,padding:"10px",background:"#fff",color:"#5c6f82",border:"1.5px solid #d9dadb",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Torna al login")
+          )
+        ):
+        // Normal credential view
+        h("div",null,
+          h("h3",{style:{fontSize:16,fontWeight:700,color:"#003366",marginBottom:4}},
+            pendingAction&&pendingAction.mode==="admin_new"?"Admin: Inserisci scheda per utente":
+            pendingAction&&pendingAction.mode==="edit"?"Verifica Credenziali":"Registrazione / Accesso"),
+          h("p",{style:{fontSize:12,color:"#5c6f82",marginBottom:14}},
+            pendingAction&&pendingAction.mode==="admin_new"?
+            "Seleziona un utente esistente o scrivi un nuovo nome.":
+            pendingAction&&pendingAction.mode==="edit"?
+            "Per modificare questa scheda inserisci la password usata alla creazione.":
+            "Inserisci le tue credenziali. Ti serviranno per modificare la scheda in futuro."),
+          authErr?h("div",{style:{background:"#fef2f4",border:"1px solid #d9364f",borderRadius:4,padding:"6px 10px",marginBottom:10,color:"#d9364f",fontSize:12,fontWeight:600}},authErr):null,
+          // Name field
+          h("div",{style:{marginBottom:10}},
+            h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},
+              pendingAction&&pendingAction.mode==="admin_new"?"Assegna a utente":"Nome e Cognome"),
+            pendingAction&&pendingAction.mode==="admin_new"?
+              h("div",null,
+                h("select",{style:Object.assign({},IS,{marginBottom:6}),value:authName,onChange:function(e){setAN(e.target.value)}},
+                  h("option",{value:""},"-- Seleziona utente esistente --"),
+                  h("option",{value:"admin"},"admin"),
+                  users.map(function(u){return h("option",{key:u.name,value:u.name},u.name+(u.email?" ("+u.email+")":""))})
+                ),
+                h("input",{style:IS,value:authName,onChange:function(e){setAN(e.target.value)},placeholder:"...oppure scrivi nuovo nome"})
+              ):
+              h("input",{style:Object.assign({},IS,{background:pendingAction&&pendingAction.mode==="edit"?"#f0f0f0":"#fff"}),
+                value:authName,onChange:function(e){setAN(e.target.value)},
+                readOnly:pendingAction&&pendingAction.mode==="edit",
+                placeholder:"es. Mario Rossi"})
+          ),
+          // Email field (only for NEW users)
+          pendingAction&&pendingAction.mode==="new"?
+            h("div",{style:{marginBottom:10}},
+              h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},"Email ",h("span",{style:{fontSize:10,color:"#5c6f82"}},"(facoltativa - per recupero password)")),
+              h("input",{style:IS,type:"email",value:authEmail,onChange:function(e){setAEM(e.target.value)},placeholder:"mario.rossi@regione.molise.it"})
+            ):null,
+          // Password field (not needed for admin_new)
+          pendingAction&&pendingAction.mode!=="admin_new"?
+            h("div",{style:{marginBottom:10}},
+              h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},"Password"),
+              h("input",{style:IS,type:"password",value:authPwd,onChange:function(e){setAP(e.target.value)},
+                onKeyDown:function(e){if(e.key==="Enter")confirmCred()},
+                placeholder:pendingAction&&pendingAction.mode==="edit"?"Inserisci la password":"Scegli una password (min 3 caratteri)"})
+            ):null,
+          // Forgot password link (only for edit mode)
           pendingAction&&pendingAction.mode==="edit"?
-          "Per modificare questa scheda inserisci la password usata alla creazione.":
-          "Queste credenziali ti serviranno per modificare la scheda in futuro."),
-        authErr?h("div",{style:{background:"#fef2f4",border:"1px solid #d9364f",borderRadius:4,padding:"6px 10px",marginBottom:10,color:"#d9364f",fontSize:12,fontWeight:600}},authErr):null,
-        // Name field - for admin, show dropdown of existing users
-        h("div",{style:{marginBottom:10}},
-          h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},
-            pendingAction&&pendingAction.mode==="admin_new"?"Assegna a utente":"Nome e Cognome"),
-          pendingAction&&pendingAction.mode==="admin_new"?
-            h("div",null,
-              h("select",{style:Object.assign({},IS,{marginBottom:6}),value:authName,onChange:function(e){setAN(e.target.value)}},
-                h("option",{value:""},"-- Seleziona utente esistente --"),
-                h("option",{value:"admin"},"admin"),
-                users.map(function(u){return h("option",{key:u.name,value:u.name},u.name)})
-              ),
-              h("input",{style:IS,value:authName,onChange:function(e){setAN(e.target.value)},placeholder:"...oppure scrivi nuovo nome"})
-            ):
-            h("input",{style:Object.assign({},IS,{background:pendingAction&&pendingAction.mode==="edit"?"#f0f0f0":"#fff"}),
-              value:authName,onChange:function(e){setAN(e.target.value)},
-              readOnly:pendingAction&&pendingAction.mode==="edit",
-              placeholder:"es. Mario Rossi"})
-        ),
-        // Password field (not needed for admin_new)
-        pendingAction&&pendingAction.mode!=="admin_new"?
-          h("div",{style:{marginBottom:14}},
-            h("label",{style:{display:"block",fontWeight:600,fontSize:12,marginBottom:2}},"Password"),
-            h("input",{style:IS,type:"password",value:authPwd,onChange:function(e){setAP(e.target.value)},
-              onKeyDown:function(e){if(e.key==="Enter")confirmCred()},
-              placeholder:pendingAction&&pendingAction.mode==="edit"?"Inserisci la password":"Scegli una password (min 3 caratteri)"})
-          ):null,
-        h("div",{style:{display:"flex",gap:8}},
-          h("button",{onClick:confirmCred,style:{flex:1,padding:"10px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Conferma"),
-          h("button",{onClick:function(){setCM(false);setPA(null)},style:{flex:1,padding:"10px",background:"#fff",color:"#5c6f82",border:"1.5px solid #d9dadb",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Annulla")
+            h("div",{style:{textAlign:"right",marginBottom:10}},
+              h("button",{onClick:function(){setFP(true);setFPN(authName);setFPS("")},style:{background:"none",border:"none",color:"#0066cc",cursor:"pointer",fontSize:12,textDecoration:"underline"}},"Password dimenticata?")
+            ):null,
+          h("div",{style:{display:"flex",gap:8}},
+            h("button",{onClick:confirmCred,style:{flex:1,padding:"10px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Conferma"),
+            h("button",{onClick:function(){setCM(false);setPA(null);setFP(false)},style:{flex:1,padding:"10px",background:"#fff",color:"#5c6f82",border:"1.5px solid #d9dadb",borderRadius:4,fontWeight:600,fontSize:13,cursor:"pointer"}},"Annulla")
+          )
         )
       )
     ):null,
@@ -1812,22 +1877,46 @@ function App(){
             users.length?h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:12}},
               h("thead",null,h("tr",null,
                 h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Nome"),
+                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Email"),
                 h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Password"),
                 h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Registrato il"),
                 h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Ultimo accesso"),
                 h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"N. Schede"),
-                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Servizi")
+                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Servizi"),
+                h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Azioni")
               )),
               h("tbody",null,users.map(function(u,i){
                 var uSubs=subs.filter(function(s){return s.author===u.name||s.createdBy===u.name});
                 var uSvcs={};uSubs.forEach(function(s){uSvcs[s.serviceCode]=true});
                 return h("tr",{key:u.name,style:{background:i%2?"#f8f9fa":"#fff"}},
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontWeight:600}},u.name),
-                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontFamily:"monospace",color:u.pwd==="(migrato)"?"#b8860b":"#d9364f"}},u.pwd==="(migrato)"?"(pwd precedente - hash: "+u.hash+")":u.pwd||"(hash: "+u.hash+")"),
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #e8ecf1"}},
+                    h("input",{style:{width:"100%",padding:"4px 6px",border:"1.5px solid "+(u.email?"#d9dadb":"#d9364f"),borderRadius:3,fontSize:11,fontFamily:"inherit",background:u.email?"#fff":"#fff8f0"},
+                      defaultValue:u.email||"",placeholder:"inserisci email...",
+                      onBlur:function(e){
+                        var newEmail=e.target.value.trim();
+                        if(newEmail===u.email)return;
+                        var updated=users.map(function(x){if(x.name===u.name)return Object.assign({},x,{email:newEmail});return x});
+                        saveUsers(updated);
+                        flash("Email aggiornata per "+u.name);
+                      }
+                    })
+                  ),
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontFamily:"monospace",fontSize:11,color:u.pwd==="(migrato)"?"#b8860b":"#d9364f"}},u.pwd==="(migrato)"?"(pwd precedente)":u.pwd||"(hash: "+u.hash+")"),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.registered?new Date(u.registered).toLocaleString("it-IT"):"-"),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.lastLogin?new Date(u.lastLogin).toLocaleString("it-IT"):"-"),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontWeight:700}},uSubs.length),
-                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:10}},Object.keys(uSvcs).join(", ")||"-")
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:10}},Object.keys(uSvcs).join(", ")||"-"),
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #e8ecf1"}},
+                    u.email&&u.pwd&&u.pwd!=="(migrato)"?h("button",{onClick:function(){
+                      if(!confirm("Inviare la password a "+u.email+"?"))return;
+                      if(!window.API_URL){alert("Backend cloud non configurato");return}
+                      fetch(window.API_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
+                        body:JSON.stringify({action:"sendPassword",name:u.name,email:u.email,pwd:u.pwd})
+                      }).then(function(){flash("Email inviata a "+u.email)}).catch(function(){flash("Errore invio","err")});
+                    },style:{padding:"3px 8px",fontSize:10,background:"#0066cc",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600}},"Invia pwd"):
+                    h("span",{style:{fontSize:9,color:"#999"}},!u.email?"(no email)":"(no pwd)")
+                  )
                 );
               }))
             ):h("div",{style:{color:"#5c6f82",textAlign:"center",padding:20}},"Nessun utente registrato. Gli utenti si registrano compilando la prima scheda."),

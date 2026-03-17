@@ -33,17 +33,42 @@ button{font-family:inherit}
 // GLOBAL DATA & STORAGE
 // ════════════════════════════════════════════════
 // ════════════════════════════════════════════════
-// STORAGE: Cloud (Google Apps Script) + localStorage with backup protection
+// STORAGE: Cloud (Google Apps Script) + localStorage
+// POST affidabile via hidden form/iframe
 // ════════════════════════════════════════════════
-// ISTRUZIONI: Incolla qui sotto l'URL del tuo Google Apps Script Web App
-window.API_URL = "https://script.google.com/macros/s/AKfycbx7c2Q-pel1JLrZT2uQdbJ1oFapkNTUMZufVzaAkbxBd0rV-v8m7RS9o-2-SwGv2W8T_Q/exec"; // <── INCOLLA QUI IL TUO URL (es: "https://script.google.com/macros/s/XXXXXXX/exec")
+window.API_URL = "https://script.google.com/macros/s/AKfycbwaEKlNY8m8bYaY2UZD_huKV38CRfgSzMkgkjHhjj7HVf_ytJ7uVZO5UwbD9_GzMdooiQ/exec"; // <── INCOLLA QUI IL TUO URL
 
 window.SK = "ppo_molise";
 window._SUBS = [];
 window._syncing = false;
 window._lastSync = null;
 
-// Save: localStorage (with backup) + cloud
+// Deleted IDs tracker
+window._getDeleted = function(){try{return JSON.parse(localStorage.getItem(window.SK+"_deleted")||"[]")}catch(e){return[]}};
+window._addDeleted = function(id){var d=window._getDeleted();if(d.indexOf(id)<0)d.push(id);try{localStorage.setItem(window.SK+"_deleted",JSON.stringify(d))}catch(e){}};
+
+// Reliable POST via hidden form + iframe (solves Apps Script 302 redirect problem)
+window._cloudPost = function(payload,callback){
+  if(!window.API_URL)return;
+  var fid="gf"+Date.now();
+  var iframe=document.createElement("iframe");
+  iframe.name=fid;iframe.style.display="none";
+  document.body.appendChild(iframe);
+  var form=document.createElement("form");
+  form.method="POST";form.action=window.API_URL;form.target=fid;form.style.display="none";
+  var input=document.createElement("input");
+  input.type="hidden";input.name="payload";input.value=JSON.stringify(payload);
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(function(){
+    try{document.body.removeChild(iframe)}catch(e){}
+    try{document.body.removeChild(form)}catch(e){}
+    if(callback)callback();
+  },8000);
+};
+
+// Save: localStorage + cloud
 window._save = function(s){
   window._SUBS = s;
   var json = JSON.stringify(s);
@@ -51,69 +76,29 @@ window._save = function(s){
     localStorage.setItem(window.SK, json);
     localStorage.setItem(window.SK + "_backup", json);
     localStorage.setItem(window.SK + "_ts", new Date().toISOString());
-    localStorage.setItem(window.SK + "_count", String(s.length));
-  }catch(e){ console.error("localStorage save error:", e); }
-  // Cloud save via no-cors (critical fix for Google Apps Script 302 redirect)
+  }catch(e){}
   if(window.API_URL){
     window._syncing = true;
     window.dispatchEvent(new Event("syncStatus"));
-    fetch(window.API_URL, {
-      method:"POST",
-      mode:"no-cors",
-      headers:{"Content-Type":"text/plain"},
-      body:JSON.stringify({action:"save",data:s})
-    }).then(function(){
-      // no-cors gives opaque response, so verify with a GET
-      return fetch(window.API_URL+"?action=load&t="+Date.now());
-    }).then(function(r){return r.json()}).then(function(cloud){
+    var deleted=window._getDeleted();
+    window._cloudPost({action:"save",data:s,deletedIds:deleted},function(){
       window._syncing=false; window._lastSync=new Date();
-      if(cloud&&Array.isArray(cloud)&&cloud.length>=s.length){
-        console.log("Cloud save VERIFIED: "+cloud.length+" entries");
-      } else {
-        console.warn("Cloud save may have failed. Cloud has "+(cloud?cloud.length:0)+", expected "+s.length+". Retrying...");
-        // Retry once
-        setTimeout(function(){
-          fetch(window.API_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"save",data:window._SUBS})})
-          .then(function(){console.log("Retry save sent")})
-          .catch(function(e){console.error("Retry failed:",e)});
-        },2000);
-      }
       window.dispatchEvent(new Event("syncStatus"));
-    }).catch(function(e){
-      window._syncing=false;
-      window.dispatchEvent(new Event("syncStatus"));
-      console.error("Cloud save error:",e);
-      alert("ATTENZIONE: Salvataggio cloud potrebbe non essere riuscito.\nI dati sono salvati localmente.\nErrore: "+e.message+"\n\nRiprova cliccando il bottone Cloud/Sync in alto.");
+      console.log("Cloud save sent: "+s.length+" entries, "+deleted.length+" deletions");
     });
   }
 };
 
-// Load: cloud first, fallback localStorage (with backup recovery)
+// Load: GET from cloud (reliable), merge with local, respect deletions
 window._load = function(){
-  // Recover best local data (main or backup, whichever has more entries)
   var local = [];
   try{
     var main = JSON.parse(localStorage.getItem(window.SK) || "null");
     var backup = JSON.parse(localStorage.getItem(window.SK + "_backup") || "null");
-    // Also try old keys for migration
-    var old = null;
-    var oldKeys = ["ppo9","ppo8","ppo-v7","ppo-m-v6","ppo-m-v5"];
-    for(var i=0;i<oldKeys.length;i++){
-      try{var d=JSON.parse(localStorage.getItem(oldKeys[i])||"null");if(d&&d.length&&(!old||d.length>old.length))old=d;}catch(e){}
-    }
-    // Pick the one with most entries
-    var candidates = [main, backup, old].filter(function(x){return x && Array.isArray(x)});
+    var candidates = [main, backup].filter(function(x){return x && Array.isArray(x)});
     candidates.sort(function(a,b){return b.length - a.length});
     if(candidates.length > 0) local = candidates[0];
-    // Re-save the best version
-    if(local.length > 0){
-      localStorage.setItem(window.SK, JSON.stringify(local));
-      localStorage.setItem(window.SK + "_backup", JSON.stringify(local));
-    }
-    if(local.length > 0) console.log("Local load: " + local.length + " entries");
-  }catch(e){ console.error("localStorage load error:", e); }
-
-  // Trigger async cloud load
+  }catch(e){}
   if(window.API_URL){
     window._syncing=true;
     window.dispatchEvent(new Event("syncStatus"));
@@ -122,81 +107,67 @@ window._load = function(){
     .then(function(cloudData){
       window._syncing=false; window._lastSync=new Date();
       if(cloudData && Array.isArray(cloudData)){
-        // Merge: combine cloud + local by ID (no duplicates, no data loss)
+        var deleted=window._getDeleted();
         var byId = {};
-        // Cloud entries first
-        cloudData.forEach(function(e){ if(e && e.id) byId[e.id] = e; });
-        // Local entries: add if not in cloud, or if local is newer
+        cloudData.forEach(function(e){if(e&&e.id&&deleted.indexOf(e.id)<0)byId[e.id]=e});
         local.forEach(function(e){
-          if(!e || !e.id) return;
-          if(!byId[e.id]){
-            byId[e.id] = e; // New local entry not in cloud
-          } else {
-            // Keep the one with latest modification
-            var cloudTs = byId[e.id].lastModifiedAt || byId[e.id].timestamp || "";
-            var localTs = e.lastModifiedAt || e.timestamp || "";
-            if(localTs > cloudTs) byId[e.id] = e;
-          }
+          if(!e||!e.id||deleted.indexOf(e.id)>=0)return;
+          if(!byId[e.id])byId[e.id]=e;
+          else{var ct=byId[e.id].lastModifiedAt||byId[e.id].timestamp||"";var lt=e.lastModifiedAt||e.timestamp||"";if(lt>ct)byId[e.id]=e}
         });
-        var merged = Object.keys(byId).map(function(k){return byId[k]});
-        window._SUBS = merged;
-        try{
-          localStorage.setItem(window.SK, JSON.stringify(merged));
-          localStorage.setItem(window.SK + "_backup", JSON.stringify(merged));
-        }catch(e){}
-        // Push merged back to cloud if we added local entries
-        if(merged.length > cloudData.length){
-          window._save(merged);
-          console.log("Merged: pushed " + (merged.length - cloudData.length) + " local entries to cloud");
+        var merged=Object.keys(byId).map(function(k){return byId[k]});
+        window._SUBS=merged;
+        try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
+        if(merged.length!==cloudData.length||deleted.length>0){
+          window._cloudPost({action:"save",data:merged,deletedIds:deleted});
         }
         window.dispatchEvent(new Event("subsChanged"));
-        console.log("Cloud load OK: "+merged.length+" entries (cloud:"+cloudData.length+", local:"+local.length+")");
-      } else if(local.length > 0){
-        window._save(local);
-        console.log("Cloud was empty, pushed "+local.length+" local entries");
-      }
+        console.log("Sync OK: "+merged.length+" (cloud:"+cloudData.length+", local:"+local.length+", deleted:"+deleted.length+")");
+      }else if(local.length>0){window._save(local)}
       window.dispatchEvent(new Event("syncStatus"));
     }).catch(function(e){
-      window._syncing=false;
-      window.dispatchEvent(new Event("syncStatus"));
-      console.log("Cloud unavailable, using localStorage ("+local.length+" entries):",e.message||e);
+      window._syncing=false;window.dispatchEvent(new Event("syncStatus"));
+      console.log("Cloud unavailable, local: "+local.length);
     });
   }
   return local;
 };
 
-// Force reload from cloud
+// Force sync
 window._forceSync = function(){
-  if(!window.API_URL){
-    alert("Backend cloud non configurato!\\n\\nI dati sono salvati SOLO su questo browser.\\n\\nPer condividere i dati tra tutti gli utenti:\\n1. Segui le istruzioni nel README del repository GitHub\\n2. Crea un Google Sheet + Apps Script\\n3. Incolla l'URL nella riga API_URL del file index.html\\n\\nDati locali attuali: "+window._SUBS.length+" schede");
-    return;
-  }
-  window._syncing=true;
-  window.dispatchEvent(new Event("syncStatus"));
+  if(!window.API_URL){alert("Backend cloud non configurato!\n\nDati locali: "+window._SUBS.length+" schede");return}
+  window._syncing=true;window.dispatchEvent(new Event("syncStatus"));
+  var deleted=window._getDeleted();
   fetch(window.API_URL+"?action=load&t="+Date.now())
-  .then(function(r){return r.json()})
-  .then(function(d){
+  .then(function(r){return r.json()}).then(function(d){
     window._syncing=false;window._lastSync=new Date();
     if(d&&Array.isArray(d)){
-      // Merge with local
-      var byId={};d.forEach(function(e){if(e&&e.id)byId[e.id]=e});
-      window._SUBS.forEach(function(e){if(e&&e.id&&!byId[e.id])byId[e.id]=e});
+      var byId={};d.forEach(function(e){if(e&&e.id&&deleted.indexOf(e.id)<0)byId[e.id]=e});
+      window._SUBS.forEach(function(e){if(!e||!e.id||deleted.indexOf(e.id)>=0)return;if(!byId[e.id])byId[e.id]=e});
       var merged=Object.keys(byId).map(function(k){return byId[k]});
       window._SUBS=merged;
       try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
+      window._cloudPost({action:"save",data:merged,deletedIds:deleted});
       window.dispatchEvent(new Event("subsChanged"));
-      alert("Sincronizzazione completata: "+merged.length+" schede");
+      alert("Sync completata: "+merged.length+" schede"+(deleted.length?" ("+deleted.length+" eliminazioni applicate)":""));
     }
     window.dispatchEvent(new Event("syncStatus"));
-  }).catch(function(e){
-    window._syncing=false;
-    window.dispatchEvent(new Event("syncStatus"));
-    alert("Errore sincronizzazione: "+e.message);
-  });
+  }).catch(function(e){window._syncing=false;window.dispatchEvent(new Event("syncStatus"));alert("Errore: "+e.message)});
+};
+
+// Send email via GET (affidabile, nessun problema CORS)
+window._sendEmail = function(name,email,pwd,callback){
+  if(!window.API_URL){if(callback)callback(false,"Backend non configurato");return}
+  var url=window.API_URL+"?action=sendPassword&name="+encodeURIComponent(name)+"&email="+encodeURIComponent(email)+"&pwd="+encodeURIComponent(pwd)+"&t="+Date.now();
+  fetch(url).then(function(r){return r.json()}).then(function(d){
+    if(callback)callback(d&&d.ok,d&&d.error||"");
+  }).catch(function(e){if(callback)callback(false,e.message)});
 };
 
 window._hash = function(str){
   var h=0;for(var i=0;i<str.length;i++){h=((h<<5)-h)+str.charCodeAt(i);h=h&h}return"h"+Math.abs(h).toString(36);
+};
+
 };
 
 // Services from Pianta Organica Aggiornata 10/03/2026
@@ -640,16 +611,9 @@ window._archivePDF=function(id){var e=window._SUBS.filter(function(s){return s.i
 window._archiveXLS=function(id){var e=window._SUBS.filter(function(s){return s.id===id})[0];if(e)try{window._mkXLS(e)}catch(err){alert("Errore XLS: "+err.message)}};
 window._archiveDel=function(id){
   if(!confirm("Eliminare questa scheda?"))return;
+  window._addDeleted(id);
   window._SUBS=window._SUBS.filter(function(s){return s.id!==id});
-  var json=JSON.stringify(window._SUBS);
-  try{localStorage.setItem(window.SK,json);localStorage.setItem(window.SK+"_backup",json)}catch(e){}
-  // Cloud: save with deleted ID info
-  if(window.API_URL){
-    fetch(window.API_URL,{
-      method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
-      body:JSON.stringify({action:"save",data:window._SUBS,deletedIds:[id]})
-    }).catch(function(e){console.error(e)});
-  }
+  window._save(window._SUBS);
   window.dispatchEvent(new Event("subsChanged"));
 };
 window._exportAll=function(){
@@ -1442,7 +1406,7 @@ function App(){
   // User registry (stored alongside data)
   var _ur=useState(function(){try{return JSON.parse(localStorage.getItem("ppo_users")||"[]")}catch(e){return[]}}),users=_ur[0],setUsers=_ur[1];
   var saveUsers=function(u){setUsers(u);try{localStorage.setItem("ppo_users",JSON.stringify(u))}catch(e){}
-    if(window.API_URL){fetch(window.API_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"saveUsers",data:u})}).catch(function(e){console.error("saveUsers error:",e)})}
+    window._cloudPost({action:"saveUsers",data:u});
   };
   // Load users from cloud on mount + auto-migrate from existing entries
   useEffect(function(){
@@ -1563,14 +1527,9 @@ function App(){
     if(!found.email){setFPS("Nessuna email associata a questo utente. Contatta l'amministratore.");return}
     if(!found.pwd||found.pwd==="(migrato)"){setFPS("Password non disponibile. Contatta l'amministratore.");return}
     setFPS("Invio in corso...");
-    if(!window.API_URL){setFPS("Backend cloud non configurato. Contatta l'amministratore.");return}
-    fetch(window.API_URL,{
-      method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
-      body:JSON.stringify({action:"sendPassword",name:found.name,email:found.email,pwd:found.pwd})
-    }).then(function(){
-      setFPS("Email inviata a "+found.email+"! Controlla anche la cartella spam.");
-    }).catch(function(e){
-      setFPS("Errore invio. Contatta l'amministratore.");
+    window._sendEmail(found.name,found.email,found.pwd,function(ok,err){
+      if(ok) setFPS("Email inviata a "+found.email+"! Controlla anche lo spam.");
+      else setFPS("Errore invio: "+(err||"sconosciuto")+". Contatta l'amministratore.");
     });
   };
 
@@ -1921,10 +1880,9 @@ function App(){
                   h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #e8ecf1"}},
                     u.email&&u.pwd&&u.pwd!=="(migrato)"?h("button",{onClick:function(){
                       if(!confirm("Inviare la password a "+u.email+"?"))return;
-                      if(!window.API_URL){alert("Backend cloud non configurato");return}
-                      fetch(window.API_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
-                        body:JSON.stringify({action:"sendPassword",name:u.name,email:u.email,pwd:u.pwd})
-                      }).then(function(){flash("Email inviata a "+u.email)}).catch(function(){flash("Errore invio","err")});
+                      window._sendEmail(u.name,u.email,u.pwd,function(ok,err){
+                        if(ok)flash("Email inviata a "+u.email);else flash("Errore: "+(err||"invio fallito"),"err");
+                      });
                     },style:{padding:"3px 8px",fontSize:10,background:"#0066cc",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600}},"Invia pwd"):
                     h("span",{style:{fontSize:9,color:"#999"}},!u.email?"(no email)":"(no pwd)")
                   )

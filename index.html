@@ -254,19 +254,58 @@ window._load = function(){
 // ── Force sync: reload from cloud ──
 window._forceSync = function(){
   if(!window.API_URL){alert("Backend cloud non configurato!\nDati locali: "+window._SUBS.length+" schede");return}
-  // PURO DOWNLOAD DAL CLOUD — nessun merge con locale
-  // Cosi tutti i browser vedono la stessa cosa
+  // Block sync while save queue is active
+  if(window._saveQueue.length>0||window._saving){
+    alert("Salvataggio in corso ("+window._saveQueue.length+" operazioni in coda).\nAttendi qualche secondo e riprova.");
+    return;
+  }
   window._syncing=true;
   window.dispatchEvent(new Event("syncStatus"));
-  window._cloudGet({action:"load"},function(d){
+  var localBefore=window._SUBS.slice(); // snapshot before sync
+  window._cloudGet({action:"load"},function(cloudData){
     window._syncing=false;window._lastSync=new Date();
-    if(d&&Array.isArray(d)){
-      window._SUBS=d;
-      try{localStorage.setItem(window.SK,JSON.stringify(d));localStorage.setItem(window.SK+"_backup",JSON.stringify(d))}catch(e){}
-      window.dispatchEvent(new Event("subsChanged"));
-      alert("SYNC: "+d.length+" schede dal cloud.\n\nQuesto e' il dato ufficiale condiviso.\nSe mancano schede, usa 'Recupera Dati' dal browser dove sono state create.");
+    if(!cloudData||!Array.isArray(cloudData)){
+      alert("Errore lettura cloud.");
+      window.dispatchEvent(new Event("syncStatus"));
+      return;
+    }
+    // MERGE: cloud + locale, per ID, tieni la versione più recente, mai perdere nulla
+    var byId={};
+    cloudData.forEach(function(e){if(e&&e.id)byId[e.id]=e});
+    var localOnly=[];
+    localBefore.forEach(function(e){
+      if(!e||!e.id)return;
+      if(!byId[e.id]){
+        byId[e.id]=e;
+        localOnly.push(e);
+      }else{
+        var ct=byId[e.id].lastModifiedAt||byId[e.id].timestamp||"";
+        var lt=e.lastModifiedAt||e.timestamp||"";
+        if(lt>ct){byId[e.id]=e;localOnly.push(e)}
+      }
+    });
+    var merged=Object.keys(byId).map(function(k){return byId[k]});
+    window._SUBS=merged;
+    try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
+    window.dispatchEvent(new Event("subsChanged"));
+    // Push local-only entries to cloud
+    if(localOnly.length>0){
+      console.log("Sync: pushing "+localOnly.length+" local entries to cloud");
+      localOnly.forEach(function(e){window._cloudSaveEntry(e)});
+      // Verify after push
+      window._queueCallback=function(){
+        window._cloudGet({action:"load"},function(final){
+          var fn=final?final.length:0;
+          if(final&&Array.isArray(final)){
+            window._SUBS=final;
+            try{localStorage.setItem(window.SK,JSON.stringify(final));localStorage.setItem(window.SK+"_backup",JSON.stringify(final))}catch(e){}
+            window.dispatchEvent(new Event("subsChanged"));
+          }
+          alert("SYNC completata!\n\nCloud prima: "+cloudData.length+"\nLocale: "+localBefore.length+"\nCaricate nel cloud: "+localOnly.length+"\nCloud ora: "+fn+" schede\n\nTutti i browser vedranno "+fn+" schede.");
+        });
+      };
     }else{
-      alert("Errore lettura cloud o cloud vuoto.");
+      alert("SYNC: "+merged.length+" schede.\nCloud e locale sono allineati.");
     }
     window.dispatchEvent(new Event("syncStatus"));
   });

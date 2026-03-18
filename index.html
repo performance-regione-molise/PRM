@@ -116,6 +116,7 @@ window._save = function(s){
 // ── Save single entry to cloud (add or update) ──
 window._cloudSaveEntry = function(entry){
   if(!window.API_URL||!entry)return;
+  window._pushedIds[entry.id]=true; // Track as pushed
   window._syncing=true;
   window.dispatchEvent(new Event("syncStatus"));
   var b64=window._b64(JSON.stringify(entry));
@@ -224,6 +225,7 @@ window._load = function(){
         // Push local-only or newer entries to cloud, then VERIFY
         if(localOnly.length>0){
           console.log("Pushing "+localOnly.length+" local entries to cloud...");
+          localOnly.forEach(function(e){window._pushedIds[e.id]=true});
           // Notify user
           try{
             var notif=document.createElement("div");
@@ -281,7 +283,7 @@ window._forceSync = function(){
     window.dispatchEvent(new Event("syncStatus"));
     // Push schede mancanti al cloud (in background, senza verifica)
     if(toPush.length>0){
-      toPush.forEach(function(e){window._cloudSaveEntry(e)});
+      toPush.forEach(function(e){window._pushedIds[e.id]=true;window._cloudSaveEntry(e)});
     }
     alert("SYNC: "+merged.length+" schede.\n\nDal cloud: "+cloud.length+"\nDal locale: "+localSnap.length+"\n"+(toPush.length?toPush.length+" schede caricate nel cloud.":"Tutto allineato."));
   });
@@ -289,23 +291,19 @@ window._forceSync = function(){
 
 // ── AUTO-SYNC: ogni 30s verifica e pusha schede mancanti ──
 window._autoSyncInterval=null;
+window._pushedIds={}; // Track IDs already pushed in this session — never re-push
+window._usersPushed=false;
 window._startAutoSync=function(){
   if(window._autoSyncInterval||!window.API_URL)return;
   window._autoSyncInterval=setInterval(function(){
-    if(window._saving||window._saveQueue.length||window._syncing)return; // Skip if busy
+    if(window._saving||window._saveQueue.length||window._syncing)return;
     window._cloudGet({action:"load"},function(cloud){
       if(!cloud||!Array.isArray(cloud))return;
-      var cloudIds={};cloud.forEach(function(e){if(e&&e.id)cloudIds[e.id]=true});
-      var missing=window._SUBS.filter(function(e){return e&&e.id&&!cloudIds[e.id]});
-      if(missing.length>0){
-        console.log("[AUTO-SYNC] "+missing.length+" schede locali mancano nel cloud, pushing...");
-        missing.forEach(function(e){window._cloudSaveEntry(e)});
-      }
-      // Also check if cloud has entries we don't have locally
+      // 1. PULL: add cloud entries we don't have locally
       var localIds={};window._SUBS.forEach(function(e){if(e&&e.id)localIds[e.id]=true});
       var cloudOnly=cloud.filter(function(e){return e&&e.id&&!localIds[e.id]});
       if(cloudOnly.length>0){
-        console.log("[AUTO-SYNC] "+cloudOnly.length+" schede nel cloud mancano in locale, merging...");
+        console.log("[AUTO-SYNC] Pull: +"+cloudOnly.length+" dal cloud");
         var byId={};window._SUBS.forEach(function(e){if(e&&e.id)byId[e.id]=e});
         cloudOnly.forEach(function(e){byId[e.id]=e});
         var merged=Object.keys(byId).map(function(k){return byId[k]});
@@ -313,8 +311,18 @@ window._startAutoSync=function(){
         try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
         window.dispatchEvent(new Event("subsChanged"));
       }
+      // 2. PUSH: only entries NOT yet pushed in this session and NOT in cloud
+      var cloudIds={};cloud.forEach(function(e){if(e&&e.id)cloudIds[e.id]=true});
+      var toPush=window._SUBS.filter(function(e){return e&&e.id&&!cloudIds[e.id]&&!window._pushedIds[e.id]});
+      if(toPush.length>0){
+        console.log("[AUTO-SYNC] Push: "+toPush.length+" schede nuove");
+        toPush.forEach(function(e){
+          window._pushedIds[e.id]=true; // Mark as pushed — won't re-push
+          window._cloudSaveEntry(e);
+        });
+      }
     });
-    // ── Auto-sync UTENTI ──
+    // ── Auto-sync UTENTI (solo pull) ──
     window._cloudGet({action:"loadUsers"},function(cloudUsers){
       if(!cloudUsers||!Array.isArray(cloudUsers))return;
       var localUsers=[];try{localUsers=JSON.parse(localStorage.getItem("ppo_users")||"[]")}catch(e){}
@@ -334,13 +342,14 @@ window._startAutoSync=function(){
       if(merged.length>localUsers.length||changed){
         try{localStorage.setItem("ppo_users",JSON.stringify(merged))}catch(e){}
         window.dispatchEvent(new Event("usersChanged"));
-        if(merged.length>cloudUsers.length){
+        if(merged.length>cloudUsers.length&&!window._usersPushed){
+          window._usersPushed=true;
           console.log("[AUTO-SYNC] Users: pushing "+merged.length+" (cloud had "+cloudUsers.length+")");
           window._cloudSaveUsers(merged);
         }
       }
     });
-  },15000); // ogni 15 secondi
+  },30000); // ogni 30 secondi
 };
 // Avvia auto-sync dopo 10 secondi dal caricamento
 setTimeout(function(){window._startAutoSync()},10000);

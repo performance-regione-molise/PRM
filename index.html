@@ -233,39 +233,22 @@ window._load = function(){
 
 // ── Force sync: reload from cloud ──
 window._forceSync = function(){
-  if(!window.API_URL){alert("Backend cloud non configurato!\n\nDati locali: "+window._SUBS.length+" schede");return}
-  // Backup PRIMA di qualsiasi operazione
-  try{localStorage.setItem(window.SK+"_presync",JSON.stringify(window._SUBS))}catch(e){}
+  if(!window.API_URL){alert("Backend cloud non configurato!\nDati locali: "+window._SUBS.length+" schede");return}
+  // PURO DOWNLOAD DAL CLOUD — nessun merge con locale
+  // Cosi tutti i browser vedono la stessa cosa
   window._syncing=true;
   window.dispatchEvent(new Event("syncStatus"));
-  // Raccogli TUTTI i dati locali da ogni fonte possibile
-  var allLocal=[];
-  [window.SK,window.SK+"_backup",window.SK+"_presync","ppo9","ppo8","ppo-v7","ppo-m-v6","ppo-m-v5"].forEach(function(k){
-    try{var d=JSON.parse(localStorage.getItem(k)||"null");if(d&&Array.isArray(d))d.forEach(function(e){if(e&&e.id)allLocal.push(e)})}catch(e){}
-  });
-  window._SUBS.forEach(function(e){if(e&&e.id)allLocal.push(e)});
-  // Carica cloud
-  window._cloudGet({action:"load"},function(cloudData){
+  window._cloudGet({action:"load"},function(d){
     window._syncing=false;window._lastSync=new Date();
-    // MERGE: cloud + tutti i locali, per ID, tieni il piu recente
-    var byId={};
-    if(cloudData&&Array.isArray(cloudData))cloudData.forEach(function(e){if(e&&e.id)byId[e.id]=e});
-    allLocal.forEach(function(e){
-      if(!e||!e.id)return;
-      if(!byId[e.id])byId[e.id]=e;
-      else{var ct=byId[e.id].lastModifiedAt||byId[e.id].timestamp||"";var lt=e.lastModifiedAt||e.timestamp||"";if(lt>ct)byId[e.id]=e}
-    });
-    var merged=Object.keys(byId).map(function(k){return byId[k]});
-    window._SUBS=merged;
-    try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
-    // Push al cloud le entry che mancano
-    var cloudIds={};if(cloudData&&Array.isArray(cloudData))cloudData.forEach(function(e){if(e&&e.id)cloudIds[e.id]=true});
-    var toPush=merged.filter(function(e){return!cloudIds[e.id]});
-    if(toPush.length>0){console.log("Pushing "+toPush.length+" to cloud");window._cloudBulkPush(toPush)}
-    window.dispatchEvent(new Event("subsChanged"));
+    if(d&&Array.isArray(d)){
+      window._SUBS=d;
+      try{localStorage.setItem(window.SK,JSON.stringify(d));localStorage.setItem(window.SK+"_backup",JSON.stringify(d))}catch(e){}
+      window.dispatchEvent(new Event("subsChanged"));
+      alert("SYNC: "+d.length+" schede dal cloud.\n\nQuesto e' il dato ufficiale condiviso.\nSe mancano schede, usa 'Recupera Dati' dal browser dove sono state create.");
+    }else{
+      alert("Errore lettura cloud o cloud vuoto.");
+    }
     window.dispatchEvent(new Event("syncStatus"));
-    var cN=cloudData&&Array.isArray(cloudData)?cloudData.length:0;
-    alert("Sync completata!\nCloud: "+cN+"\nLocale: "+allLocal.length+" entries\nRisultato: "+merged.length+" schede\n"+(toPush.length?toPush.length+" caricate nel cloud":"Allineato"));
   });
 };
 
@@ -279,9 +262,10 @@ window._sendEmail = function(name,email,pwd,callback){
 
 // ── RECUPERO EMERGENZA: cerca dati in TUTTE le chiavi localStorage ──
 window._recover = function(){
-  var byId={};
+  if(!window.API_URL){alert("Backend cloud non configurato!");return}
+  // STEP 1: Raccogli TUTTO dal localStorage di QUESTO browser
+  var localById={};
   var sources=0;
-  // Scan ALL localStorage keys
   for(var i=0;i<localStorage.length;i++){
     var k=localStorage.key(i);
     try{
@@ -292,28 +276,69 @@ window._recover = function(){
           sources++;
           arr.forEach(function(e){
             if(!e||!e.id)return;
-            if(!byId[e.id])byId[e.id]=e;
-            else{var ct=byId[e.id].lastModifiedAt||byId[e.id].timestamp||"";var lt=e.lastModifiedAt||e.timestamp||"";if(lt>ct)byId[e.id]=e}
+            if(!localById[e.id])localById[e.id]=e;
+            else{var ct=localById[e.id].lastModifiedAt||localById[e.id].timestamp||"";var lt=e.lastModifiedAt||e.timestamp||"";if(lt>ct)localById[e.id]=e}
           });
         }
       }
     }catch(e){}
   }
-  // Also include current in-memory
-  window._SUBS.forEach(function(e){if(e&&e.id&&!byId[e.id])byId[e.id]=e});
-  var all=Object.keys(byId).map(function(k){return byId[k]});
-  console.log("Recovery: found "+all.length+" unique entries from "+sources+" localStorage sources");
-  if(all.length>window._SUBS.length){
-    window._SUBS=all;
-    window._save(all);
-    // Push all to cloud
-    window._cloudBulkPush(all);
-    window.dispatchEvent(new Event("subsChanged"));
-    alert("RECUPERO: trovate "+all.length+" schede.\nCaricamento nel cloud in corso...");
-  }else{
-    alert("Nessun dato aggiuntivo trovato. Schede attuali: "+all.length);
-  }
-  return all.length;
+  window._SUBS.forEach(function(e){if(e&&e.id&&!localById[e.id])localById[e.id]=e});
+  var localAll=Object.keys(localById).map(function(k){return localById[k]});
+  console.log("Recover: "+localAll.length+" entries da "+sources+" fonti locali");
+
+  // STEP 2: Carica cloud
+  window._syncing=true;
+  window.dispatchEvent(new Event("syncStatus"));
+  window._cloudGet({action:"load"},function(cloudData){
+    var cloudById={};
+    if(cloudData&&Array.isArray(cloudData))cloudData.forEach(function(e){if(e&&e.id)cloudById[e.id]=e});
+    var cloudN=cloudData?cloudData.length:0;
+
+    // STEP 3: Trova entries locali che mancano nel cloud
+    var toPush=[];
+    localAll.forEach(function(e){
+      if(!cloudById[e.id])toPush.push(e);
+    });
+
+    if(toPush.length===0){
+      window._syncing=false;
+      window.dispatchEvent(new Event("syncStatus"));
+      // Aggiorna locale con cloud
+      window._SUBS=cloudData||[];
+      try{localStorage.setItem(window.SK,JSON.stringify(window._SUBS))}catch(e){}
+      window.dispatchEvent(new Event("subsChanged"));
+      alert("Nessun dato locale aggiuntivo trovato.\nCloud: "+cloudN+" schede\nLocale: "+localAll.length+" schede\n\nTutto allineato. Prova da un altro browser.");
+      return;
+    }
+
+    // STEP 4: Carica le entry mancanti nel cloud UNA PER UNA
+    alert("Trovate "+toPush.length+" schede locali non presenti nel cloud!\n\nCaricamento in corso...\n(Cloud attuale: "+cloudN+", dopo: "+(cloudN+toPush.length)+")");
+    var done=0,fail=0;
+    var pushNext=function(){
+      if(done+fail>=toPush.length){
+        // STEP 5: Finito — ricarica dal cloud per conferma
+        window._cloudGet({action:"load"},function(final){
+          window._syncing=false;
+          window.dispatchEvent(new Event("syncStatus"));
+          var finalN=final?final.length:0;
+          window._SUBS=final||[];
+          try{localStorage.setItem(window.SK,JSON.stringify(window._SUBS));localStorage.setItem(window.SK+"_backup",JSON.stringify(window._SUBS))}catch(e){}
+          window.dispatchEvent(new Event("subsChanged"));
+          alert("RECUPERO COMPLETATO!\n\nPrima: "+cloudN+" nel cloud\nCaricate: "+done+" (fallite: "+fail+")\nCloud ora: "+finalN+" schede\n\nOra tutti i browser vedranno "+finalN+" schede con Sync.");
+        });
+        return;
+      }
+      var entry=toPush[done+fail];
+      var b64=window._b64(JSON.stringify(entry));
+      window._cloudGet({action:"upsert",id:entry.id,data:b64},function(r){
+        if(r&&r.ok){done++;console.log("[RECOVER OK] "+(done+fail)+"/"+toPush.length+" id:"+entry.id)}
+        else{fail++;console.error("[RECOVER FAIL] id:"+entry.id,r)}
+        setTimeout(pushNext,400); // Aspetta 400ms tra ogni chiamata (evita sovraccarico)
+      });
+    };
+    pushNext();
+  });
 };
 
 window._hash = function(str){
@@ -394,17 +419,64 @@ window.AREAS = [
 // Option lists
 window.IMP_STR=["AMBIENTALE","CULTURALE","DIGITALE","ECONOMICO","INFRASTRUTTURALE","SANITARIO","SCIENTIFICO","SOCIALE","SOCIALE culturale","SOCIALE demografico","SOCIALE di genere","SOCIALE economico","SOCIALE educativo ed occupazionale","SOCIALE educazione","SOCIALE Istituzionale","SOCIALE occupazionale","SOCIALE relazionale","SOCIALE sicurezza","SOCIALE soggettivo","SOCIALE turistico"];
 window.SPEC_STR=["TRASVERSALE","DI POLICY"];
-window.BES_NAZ=["Ambiente","Benessere economico","Benessere soggettivo","Innovazione ricerca e creativita","Istruzione e formazione","Lavoro e conciliazione tempi di vita","Paesaggio e patrimonio culturale","Politica e istituzioni","Qualita dei servizi","Relazioni sociali","Salute","Sicurezza"];
-window.BES_TER=["Ambiente","Benessere economico","Benessere soggettivo","Innovazione ricerca e creativita","Istruzione e formazione","Lavoro e conciliazione tempi di vita","Paesaggio e patrimonio culturale","Politica e istituzioni","Qualita dei servizi","Relazioni sociali","Salute","Sicurezza"];
+window.BES_DOMINI=["Ambiente","Benessere economico","Benessere soggettivo","Innovazione ricerca e creativita","Istruzione e formazione","Lavoro e conciliazione tempi di vita","Paesaggio e patrimonio culturale","Politica e istituzioni","Qualita dei servizi","Relazioni sociali","Salute","Sicurezza"];
+window.BES_TIPI=["BES","BES Nazionale","BES dei Territori"];
 window.LIV_TERR=["Comunale","Provinciale","Regionale","Nazionale"];
-window.EFF_OPR=[{d:"EFFICACIA",items:["Qualita erogata","Qualita fruita","Qualita percepita","Quantita erogata","Quantita fruita"]},{d:"EFFICIENZA",items:["FINANZIARIA","GESTIONALE","TEMPORALE"]},{d:"IMPATTO",items:["AMBIENTALE"]},{d:"SALUTE DELLE RISORSE",items:["DI CLIMA e DI GENERE","DI GENERE","DIGITALE","ECONOMICO-FINANZIARIA","ORGANIZZATIVA","ORGANIZZATIVA AGILE","PROFESSIONALE"]}];
-window.TRV=["Rafforzamento della capacita amministrativa","Digitalizzazione e realizzazione piena accessibilita","Contenimento della spesa e corretta gestione economico finanziaria","Rilevazione del grado di soddisfazione degli utenti","Innalzamento dei livelli di trasparenza e prevenzione fenomeni corruttivi","Conciliazione vita lavorativa/vita privata - lavoro agile","Modernizzazione e miglioramento qualitativo organizzazione","Promozione delle pari opportunita","Smaltimento arretrato e rimozione colli di bottiglia TA 1000"];
+window.EFF_OPR=[{d:"EFFICACIA",items:["Qualita erogata","Qualita fruita","Qualita percepita","Quantita erogata","Quantita fruita"]},{d:"EFFICIENZA",items:["FINANZIARIA","GESTIONALE","TEMPORALE"]},{d:"SALUTE DELLE RISORSE",items:["DI CLIMA e DI GENERE","DI GENERE","DIGITALE","ECONOMICO-FINANZIARIA","ORGANIZZATIVA","ORGANIZZATIVA AGILE","PROFESSIONALE"]}];
 window.STK=["Cittadini e collettivita","Aziende ed imprese private","Enti locali o altre pubbliche amministrazioni","Utenti interni all'amministrazione"];
-// BES arrays defined above as BES_NAZ and BES_TER
+window.MISSIONI=[{cod:"01",nome:"Servizi istituzionali, generali e di gestione"},{cod:"02",nome:"Giustizia"},{cod:"03",nome:"Ordine pubblico e sicurezza"},{cod:"04",nome:"Istruzione e diritto allo studio"},{cod:"05",nome:"Tutela e valorizzazione dei beni e attivita culturali"},{cod:"06",nome:"Politiche giovanili, sport e tempo libero"},{cod:"07",nome:"Turismo"},{cod:"08",nome:"Assetto del territorio ed edilizia abitativa"},{cod:"09",nome:"Sviluppo sostenibile e tutela del territorio"},{cod:"10",nome:"Trasporti e diritto alla mobilita"},{cod:"11",nome:"Soccorso civile"},{cod:"12",nome:"Diritti sociali, politiche sociali e famiglia"},{cod:"13",nome:"Tutela della salute"},{cod:"14",nome:"Sviluppo economico e competitivita"},{cod:"15",nome:"Politiche per il lavoro e la formazione professionale"},{cod:"16",nome:"Agricoltura, politiche agroalimentari e pesca"},{cod:"17",nome:"Energia e diversificazione delle fonti energetiche"},{cod:"18",nome:"Relazioni con le altre autonomie territoriali e locali"},{cod:"19",nome:"Relazioni internazionali"},{cod:"20",nome:"Fondi e accantonamenti"},{cod:"50",nome:"Debito pubblico"},{cod:"60",nome:"Anticipazioni finanziarie"},{cod:"99",nome:"Servizi per conto terzi"}];
+window.PROGRAMMI=[{id:"0101",mis:"01",nome:"Organi istituzionali"},{id:"0102",mis:"01",nome:"Segreteria generale"},{id:"0103",mis:"01",nome:"Gestione economica, finanziaria, programmazione"},{id:"0104",mis:"01",nome:"Gestione entrate tributarie"},{id:"0105",mis:"01",nome:"Gestione beni demaniali e patrimoniali"},{id:"0106",mis:"01",nome:"Ufficio tecnico"},{id:"0107",mis:"01",nome:"Elezioni e consultazioni popolari"},{id:"0108",mis:"01",nome:"Statistica e sistemi informativi"},{id:"0109",mis:"01",nome:"Assistenza tecnico-amministrativa enti locali"},{id:"0110",mis:"01",nome:"Risorse umane"},{id:"0111",mis:"01",nome:"Altri servizi generali"},{id:"0201",mis:"02",nome:"Uffici giudiziari"},{id:"0301",mis:"03",nome:"Polizia locale e amministrativa"},{id:"0302",mis:"03",nome:"Sistema integrato sicurezza urbana"},{id:"0401",mis:"04",nome:"Istruzione prescolastica"},{id:"0402",mis:"04",nome:"Altri ordini di istruzione"},{id:"0403",mis:"04",nome:"Edilizia scolastica"},{id:"0404",mis:"04",nome:"Istruzione universitaria"},{id:"0405",mis:"04",nome:"Istruzione tecnica superiore"},{id:"0406",mis:"04",nome:"Servizi ausiliari istruzione"},{id:"0407",mis:"04",nome:"Diritto allo studio"},{id:"0501",mis:"05",nome:"Valorizzazione beni di interesse storico"},{id:"0502",mis:"05",nome:"Attivita culturali"},{id:"0601",mis:"06",nome:"Sport e tempo libero"},{id:"0602",mis:"06",nome:"Giovani"},{id:"0701",mis:"07",nome:"Sviluppo e valorizzazione turismo"},{id:"0801",mis:"08",nome:"Urbanistica e assetto del territorio"},{id:"0802",mis:"08",nome:"Edilizia residenziale pubblica"},{id:"0901",mis:"09",nome:"Difesa del suolo"},{id:"0902",mis:"09",nome:"Tutela e recupero ambientale"},{id:"0903",mis:"09",nome:"Rifiuti"},{id:"0904",mis:"09",nome:"Servizio idrico integrato"},{id:"0905",mis:"09",nome:"Aree protette e parchi naturali"},{id:"0906",mis:"09",nome:"Tutela e valorizzazione risorse idriche"},{id:"0907",mis:"09",nome:"Sviluppo sostenibile territorio montano"},{id:"0908",mis:"09",nome:"Qualita aria e riduzione inquinamento"},{id:"1001",mis:"10",nome:"Trasporto ferroviario"},{id:"1002",mis:"10",nome:"Trasporto pubblico locale"},{id:"1003",mis:"10",nome:"Trasporto per vie d'acqua"},{id:"1004",mis:"10",nome:"Altre modalita di trasporto"},{id:"1005",mis:"10",nome:"Viabilita e infrastrutture stradali"},{id:"1101",mis:"11",nome:"Sistema di protezione civile"},{id:"1102",mis:"11",nome:"Interventi a seguito calamita naturali"},{id:"1201",mis:"12",nome:"Interventi per infanzia e minori"},{id:"1202",mis:"12",nome:"Interventi per la disabilita"},{id:"1203",mis:"12",nome:"Interventi per gli anziani"},{id:"1204",mis:"12",nome:"Interventi per soggetti a rischio esclusione"},{id:"1205",mis:"12",nome:"Interventi per le famiglie"},{id:"1206",mis:"12",nome:"Interventi per il diritto alla casa"},{id:"1207",mis:"12",nome:"Rete servizi sociosanitari e sociali"},{id:"1301",mis:"13",nome:"Finanziamento ordinario SSR"},{id:"1302",mis:"13",nome:"Finanziamento aggiuntivo SSR"},{id:"1303",mis:"13",nome:"Copertura squilibrio bilancio SSR"},{id:"1305",mis:"13",nome:"Investimenti sanitari"},{id:"1307",mis:"13",nome:"Ulteriori spese sanitarie"},{id:"1401",mis:"14",nome:"Industria, PMI e Artigianato"},{id:"1402",mis:"14",nome:"Commercio e reti distributive"},{id:"1403",mis:"14",nome:"Ricerca e innovazione"},{id:"1404",mis:"14",nome:"Reti e servizi pubblica utilita"},{id:"1501",mis:"15",nome:"Servizi per sviluppo mercato lavoro"},{id:"1502",mis:"15",nome:"Formazione professionale"},{id:"1503",mis:"15",nome:"Sostegno occupazione"},{id:"1601",mis:"16",nome:"Sviluppo settore agricolo e agroalimentare"},{id:"1602",mis:"16",nome:"Caccia e pesca"},{id:"1701",mis:"17",nome:"Fonti energetiche"},{id:"1801",mis:"18",nome:"Relazioni finanziarie autonomie territoriali"},{id:"1901",mis:"19",nome:"Relazioni internazionali e Cooperazione"}];
+window.PRIORITA=[{mis:"01",txt:"Innovare la capacita amministrativa dell'ente"},{mis:"04",txt:"Potenziare le politiche per l'istruzione e il diritto allo studio"},{mis:"05",txt:"Tutelare e valorizzare le risorse culturali"},{mis:"06",txt:"Potenziare le politiche giovanili, sport e tempo libero"},{mis:"07",txt:"Innovare il sistema dell'offerta turistica e culturale"},{mis:"08",txt:"Politiche per la casa e housing sociale"},{mis:"09",txt:"Tutelare e valorizzare le risorse naturali"},{mis:"10",txt:"Rendere il territorio accessibile e interconnesso"},{mis:"11",txt:"Potenziare il sistema di protezione civile"},{mis:"12",txt:"Promuovere benessere e inclusione sociale"},{mis:"13",txt:"Potenziare l'offerta sanitaria"},{mis:"14",txt:"Promuovere la competitivita del sistema produttivo"},{mis:"15",txt:"Promuovere formazione, lavoro e occupazione"},{mis:"16",txt:"Sviluppare agricoltura, pesca e acquacoltura"},{mis:"17",txt:"Promuovere efficienza energetica e rinnovabili"},{mis:"19",txt:"Internazionalizzare lo sviluppo"},{mis:"20",txt:"Contenimento dell'incertezza finanziaria"}];
 
-// Empty form templates
-window.emptySTR = function(){return{codice:"",nome:"",peso:"",tipoAB:"",impatto:[],specifico:[],missione:"",programma:"",trasversali:[],stakeholders:[],stakeAltro:"",deadlineType:"",deadlinePeriodo:"",risultatoFinale:"",indicatore:"",baseline:"",fonte:"",um:"",formula:"",note:"",besNaz:[],besTer:[],livTerr:""}};
-window.emptyOPR = function(){return{codice:"",nome:"",peso:"",deadline:"",stratRif:"",stratRifDesc:"",natura:"",rischio:"",rischioLivello:"",rischioDesc:"",stakeholders:[],stakeAltro:"",importanza:"",indicatore:"",baseline:"",fonte:"",um:"",formula:"",ris2026:"",ris2027:"",ris2028:""}};
+// ═══ OBIETTIVI DI VALORE PUBBLICO (OVP) ═══
+window._OVP_DEFAULT = [
+  {id:"OVP1",cod:"OVP 1",nome:"Contrasto allo spopolamento, promozione della restanza e rafforzamento della coesione territoriale",
+   indicatori:[
+     {nome:"Saldo demografico regionale",formula:"var. % annua popolazione",fonte:"ISTAT",baseline:"-0,98%",t1:"-0,8",t2:"-0,6",t3:"-0,4",tipo:"Outcome",bes:"BES - popolazione"},
+     {nome:"% giovani 18-39 nelle aree interne",formula:"% residenti 18-39 / tot aree interne",fonte:"ISTAT",baseline:"<40%",t1:"42%",t2:"45%",t3:"48%",tipo:"Outcome",bes:"BES - demografia"},
+     {nome:"Tasso accesso servizi essenziali",formula:"% pop. con accesso sanita/istruzione/mobilita",fonte:"ISTAT",baseline:"~60%",t1:"65%",t2:"70%",t3:"75%",tipo:"Output",bes:"BES - qualita servizi"}
+   ],missioni:["04","09","10","12"]},
+  {id:"OVP2",cod:"OVP 2",nome:"Promuovere uno sviluppo economico territoriale fondato sulla valorizzazione delle competenze locali e delle filiere produttive",
+   indicatori:[
+     {nome:"Tasso di occupazione 20-64 anni",formula:"occupati 20-64 / popolazione 20-64",fonte:"ISTAT",baseline:"41,4%",t1:"44%",t2:"47%",t3:"50%",tipo:"Outcome",bes:"BES - occupazione"},
+     {nome:"Numero imprese attive / 1.000 ab.",formula:"imprese attive / (popolazione / 1000)",fonte:"ISTAT",baseline:"~202",t1:"210",t2:"220",t3:"230",tipo:"Output",bes:"PNRR - competitivita"},
+     {nome:"Valore aggiunto pro capite",formula:"VA regionale / popolazione",fonte:"ISTAT",baseline:"~21.700 EUR",t1:"22.500",t2:"23.500",t3:"24.500",tipo:"Outcome",bes:"PNRR - sviluppo locale"}
+   ],missioni:["14","15","16"]},
+  {id:"OVP3",cod:"OVP 3",nome:"Garantire la tenuta e l'equita del SSR, assicurando accesso uniforme e qualita dei LEA",
+   indicatori:[
+     {nome:"Tasso mobilita sanitaria passiva",formula:"dimissioni fuori regione / dimissioni totali",fonte:"Min. Salute",baseline:"alta",t1:"-5%",t2:"-10%",t3:"-15%",tipo:"Outcome",bes:"BES - salute"},
+     {nome:"Tempi medi attesa (giorni)",formula:"media gg attesa prestazioni prioritarie",fonte:"Regione",baseline:"~45",t1:"40",t2:"35",t3:"30",tipo:"Output",bes:"BES - salute"},
+     {nome:"% pop. coperta servizi territoriali",formula:"pop servita / pop totale",fonte:"Regione",baseline:"~50%",t1:"55%",t2:"60%",t3:"65%",tipo:"Output",bes:"PNRR - sanita"}
+   ],missioni:["12","13"]},
+  {id:"OVP4",cod:"OVP 4",nome:"Promuovere la sostenibilita ambientale, la transizione energetica e la valorizzazione del patrimonio naturale e culturale",
+   indicatori:[
+     {nome:"% energia da fonti rinnovabili",formula:"produzione rinnovabile / produzione totale",fonte:"GSE",baseline:"~28%",t1:"32%",t2:"36%",t3:"40%",tipo:"Output",bes:"PNRR - transizione ecologica"},
+     {nome:"Presenze turistiche annue",formula:"n. presenze strutture ricettive",fonte:"ISTAT",baseline:"+19,2%",t1:"+8%",t2:"+12%",t3:"+15%",tipo:"Outcome",bes:"BES - qualita ambiente"},
+     {nome:"Emissioni CO2 pro capite",formula:"emissioni totali / popolazione",fonte:"ISPRA",baseline:"alto",t1:"-3%",t2:"-6%",t3:"-10%",tipo:"Outcome",bes:"BES - ambiente"}
+   ],missioni:["05","07","09","17"]},
+  {id:"OVP5",cod:"OVP 5",nome:"Rafforzare la capacita amministrativa, la digitalizzazione e la trasparenza dell'ente regionale",
+   indicatori:[
+     {nome:"Tempo medio procedimenti (gg)",formula:"media giorni conclusione procedimenti",fonte:"Regione",baseline:"~90",t1:"80",t2:"70",t3:"60",tipo:"Output",bes:"PNRR - PA digitale"},
+     {nome:"% servizi digitalizzati",formula:"servizi online / servizi totali",fonte:"Regione",baseline:"84,6%",t1:"70%",t2:"80%",t3:"90%",tipo:"Output",bes:"PNRR - digitale PA"},
+     {nome:"Indice trasparenza",formula:"score trasparenza ANAC",fonte:"ANAC",baseline:"70%",t1:"80%",t2:"90%",t3:"95%",tipo:"Output",bes:"BES - istituzioni"}
+   ],missioni:["01"]}
+];
+window._loadOVP = function(){try{return JSON.parse(localStorage.getItem("ppo_ovp")||"null")||window._OVP_DEFAULT.map(function(o){return JSON.parse(JSON.stringify(o))})}catch(e){return window._OVP_DEFAULT.map(function(o){return JSON.parse(JSON.stringify(o))})}};
+window._saveOVP = function(ovps){try{localStorage.setItem("ppo_ovp",JSON.stringify(ovps))}catch(e){}
+  window._cloudSaveUsers&&window.API_URL?window._cloudGet({action:"load"},function(){}):null;
+};
+// Auto-generate code prefix
+window._nextCode = function(type,svcCode){
+  var prefix=type==="strategic"?"ObSTR":"ObOP";
+  var svcParts=svcCode.split(".");
+  var existing=window._SUBS.filter(function(s){return s.type===type&&s.serviceCode===svcCode});
+  var n=existing.length+1;
+  return prefix+"."+svcCode+"."+n;
+};
+
+window.emptySTR = function(svcCode){var code=svcCode?window._nextCode("strategic",svcCode):"";return{codice:code,nome:"",peso:"",tipoAB:"",impatto:[],specifico:[],missione:"",programma:"",stakeholders:[],stakeAltro:"",deadlineType:"",deadlinePeriodo:"",risultatoFinale:"",indicatore:"",baseline:"",fonte:"",um:"",formula:"",note:"",besTipo:[],besDomini:[],livTerr:"",ovpRef:""}};
+window.emptyOPR = function(svcCode){var code=svcCode?window._nextCode("operative",svcCode):"";return{codice:code,nome:"",peso:"",deadline:"",stratRif:"",stratRifDesc:"",natura:"",rischio:"",rischioLivello:"",rischioDesc:"",stakeholders:[],stakeAltro:"",importanza:"",indicatore:"",baseline:"",fonte:"",um:"",formula:"",ris2026:"",ris2027:"",ris2028:""}};
+
 
 // Helpers
 window.findArea = function(svcCode){
@@ -418,7 +490,7 @@ window.getOprsByStr = function(strId){return window._SUBS.filter(function(s){ret
 window.sumWeights = function(entries){var t=0;entries.forEach(function(e){t+=parseFloat(e.data.peso)||0});return t};
 
 // ════════════════════════════════════════════════
-// PDF GENERATION - Fedele ad Allegato 2 (STR) & Allegato 3 (OPR)
+// PDF GENERATION
 // ════════════════════════════════════════════════
 window._mkPDF = function(en){
   var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
@@ -469,7 +541,7 @@ window._mkPDF = function(en){
     ],theme:"grid",styles:s7});y=doc.lastAutoTable.finalY;
 
     // Valore Pubblico
-    var impTxt=(d.impatto||[]).join(", ")||"(vedi Allegato OVP - MODALITA)";
+    var impTxt=(d.impatto||[]).join(", ")||"(vedi OVP)";
     var specTxt=(d.specifico||[]).join(", ")||"";
     var tipoTxt=d.tipoAB==="A"?"TIPO A - Specifico TRASVERSALE":d.tipoAB==="B"?"TIPO B - Specifico DI POLICY":specTxt;
     doc.autoTable({startY:y,margin:{left:mx,right:5},body:[
@@ -481,11 +553,11 @@ window._mkPDF = function(en){
 
     // Missione + Programma + Trasversali
     doc.autoTable({startY:y,margin:{left:mx,right:5},body:[
-      [{content:"Riferimento Missione e\nProgramma e collegamento\na OBIETTIVI TRASVERSALI\n(selezionare anche piu\ndi una opzione)",
-        styles:bf({cellWidth:28,rowSpan:3,valign:"top",fontSize:5.5})},
+      [{content:"Riferimento\nMissione e Programma",
+        styles:bf({cellWidth:28,rowSpan:2,valign:"top"})},
        {content:"MISSIONE",styles:bf({cellWidth:20})},{content:d.missione||"",colSpan:4}],
       [{content:"PROGRAMMA",styles:bf({cellWidth:20})},{content:d.programma||"",colSpan:4}],
-      [{content:window.TRV.map(function(t){return ck(d.trasversali,t)+" "+t}).join("\n"),colSpan:5,styles:{fontSize:5}}]
+
     ],theme:"grid",styles:s7});y=doc.lastAutoTable.finalY;
 
     // Stakeholders
@@ -518,15 +590,15 @@ window._mkPDF = function(en){
 
     // Livello territoriale + BES
     var livTxt=d.livTerr||"-";
-    var besNazTxt=(d.besNaz||d.bes||[]).join(", ")||"-";
-    var besTerTxt=(d.besTer||[]).join(", ")||"-";
+    var besTipoTxt=(d.besTipo||[]).join(", ")||"-";
+    var besDominiTxt=(d.besDomini||d.besNaz||d.bes||[]).join(", ")||"-";
     doc.autoTable({startY:y,margin:{left:mx,right:5},body:[
       [{content:"Livello territoriale",styles:bf({cellWidth:28})},{content:livTxt,colSpan:5}]
     ],theme:"grid",styles:s7});y=doc.lastAutoTable.finalY;
 
     doc.autoTable({startY:y,margin:{left:mx,right:5},body:[
-      [{content:"BES Nazionale",styles:bf({cellWidth:28})},{content:besNazTxt,colSpan:5,styles:{fontSize:6}}],
-      [{content:"BES dei Territori",styles:bf({cellWidth:28})},{content:besTerTxt,colSpan:5,styles:{fontSize:6}}]
+      [{content:"BES (Tipo)",styles:bf({cellWidth:28})},{content:besTipoTxt,colSpan:5,styles:{fontSize:6}}],
+      [{content:"BES (Domini)",styles:bf({cellWidth:28})},{content:besDominiTxt,colSpan:5,styles:{fontSize:6}}]
     ],theme:"grid",styles:s7});y=doc.lastAutoTable.finalY;
 
     // Note
@@ -612,10 +684,7 @@ window._mkPDF = function(en){
        {content:d.fonte||"",styles:{cellWidth:18}},
        {content:"Risultato\natteso 2026",styles:bf({cellWidth:22})},
        {content:d.ris2026||"",styles:{cellWidth:18}},
-       {content:"Risultato\natteso 2027",styles:bf({cellWidth:22})},
-       {content:d.ris2027||"",styles:{cellWidth:18}},
-       {content:"Risultato\natteso 2028",styles:bf({cellWidth:22})},
-       {content:d.ris2028||"",styles:{cellWidth:18}}],
+       {content:"",styles:{cellWidth:22}},{content:"",styles:{cellWidth:18}},{content:"",styles:{cellWidth:22}},{content:"",styles:{cellWidth:18}}],
       [{content:"Unita di misura indicatore",styles:bf({cellWidth:25})},{content:d.um||"",colSpan:11}],
       [{content:"formula",styles:bf({cellWidth:25})},{content:d.formula||"",colSpan:11}]
     ],theme:"grid",styles:s6});
@@ -630,7 +699,7 @@ window._mkPDF = function(en){
 };
 
 // ════════════════════════════════════════════════
-// EXCEL GENERATION - Fedele ad Allegato 2 & 3
+// EXCEL GENERATION
 // ════════════════════════════════════════════════
 window._mkXLS = function(en){
   var wb=XLSX.utils.book_new();var d=en.data;var isStr=en.type==="strategic";var pfx=isStr?"STR":"OPR";
@@ -639,7 +708,7 @@ window._mkXLS = function(en){
   var rows,merges=[];
 
   if(isStr){
-    // Allegato 2 layout
+    // STR layout
     rows=[
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],
@@ -660,7 +729,7 @@ window._mkXLS = function(en){
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],
       // R12 (idx 11): Valore Pubblico
       ["VALORE PUBBLICO esterno","TIPO OBIETTIVO","","","",(d.tipoAB==="A"?"TIPO A - Specifico TRASVERSALE":d.tipoAB==="B"?"TIPO B - Specifico DI POLICY":""),"","","","","","","","","","","","","","","","","","","","","",""],
-      ["","DIMENSIONI DI IMPATTO","","","",(d.impatto||[]).join(", ")||"vedi Allegato OVP - MODALITA","","","","","","","","","","","","","","","","","","","","","",""],
+      ["","DIMENSIONI DI IMPATTO","","","",(d.impatto||[]).join(", ")||"vedi OVP - MODALITA","","","","","","","","","","","","","","","","","","","","","",""],
       // R13-15 (idx 12-14): specifico
       ["","SPECIFICO","","","",(d.specifico||[]).join(", "),"","","","","","","","","","","","","","","","","","","","","",""],
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""],
@@ -672,7 +741,7 @@ window._mkXLS = function(en){
       // R18 (idx 17): Programma
       ["","","","","","PROGRAMMA","",(d.programma||""),"","","","","","","","","","","","","","","","","","","",""],
       // R19 (idx 18): Trasversali
-      ["",ck(d.trasversali,window.TRV[0])+" Rafforzamento capacita amm.","","",ck(d.trasversali,window.TRV[1])+" Digitalizzazione","",ck(d.trasversali,window.TRV[2])+" Contenimento spesa","","",ck(d.trasversali,window.TRV[3])+" Soddisfazione utenti","","",ck(d.trasversali,window.TRV[4])+" Trasparenza","","",ck(d.trasversali,window.TRV[5])+" Conciliazione vita/lavoro","","",ck(d.trasversali,window.TRV[6])+" Modernizzazione","","",ck(d.trasversali,window.TRV[7])+" Pari opportunita","","",ck(d.trasversali,window.TRV[8])+" Smaltimento arretrato","",""],
+      // (trasversali rimossi)
       // R20 (idx 19): Stakeholders header
       ["Stakeholders (selezionare anche piu di una opzione)",ck(d.stakeholders,window.STK[0])+" Cittadini e collettivita","","","","","","","","","","","","","","","","","","","","","","","","","",""],
       // R21 (idx 20)
@@ -699,8 +768,8 @@ window._mkXLS = function(en){
       ["","","","","","","","","","","","","","formula","",(d.formula||""),"","","","","","","","","","","",""],
       // R32-33: Livello territoriale + BES
       ["Livello territoriale",(d.livTerr||""),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
-      ["BES Nazionale",(d.besNaz||d.bes||[]).join(", "),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
-      ["BES dei Territori",(d.besTer||[]).join(", "),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
+      ["BES (Tipo)",(d.besTipo||[]).join(", "),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
+      ["BES (Domini)",(d.besDomini||d.besNaz||d.bes||[]).join(", "),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
       // Note
       ["Note",(d.note||""),"","","","","","","","","","","","","","","","","","","","","","","","","",""],
       ["","","","","","","","","","","","","","","","","","","","","","","","","","","",""]
@@ -711,7 +780,7 @@ window._mkXLS = function(en){
     XLSX.utils.book_append_sheet(wb,ws,"modello Obiettivo Strategico");
 
   } else {
-    // Allegato 3 layout
+    // OPR layout
     rows=[
       // R1 (idx 0): Codice + Peso
       ["Codice obiettivo operativo (a cura dell'ufficio)","","","num. Prog.","","OBOP","","","","",".",sC,"","/ "+(d.codice||""),"","","","Peso (somma dei pesi = peso STR rif.)","",(d.peso||"")+"%",""],
@@ -756,8 +825,110 @@ window._mkXLS = function(en){
   XLSX.writeFile(wb,fname);
 };
 
+// ════════════════════════════════════════════════
+// PDF WEB-STYLE (layout simile alla pagina di compilazione)
+// ════════════════════════════════════════════════
+window._mkPDFweb = function(en){
+  var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var W=297,H=210,mx=8,mxR=W-8;
+  var d=en.data,area=en.areaName,sN=en.serviceName,sC=en.serviceCode;
+  var isStr=en.type==="strategic";
+  var y=22;
+
+  // Header
+  doc.setFillColor(0,51,102);doc.rect(0,0,W,18,"F");
+  try{doc.addImage(window.LOGO_MD,"PNG",5,1,15,15)}catch(e){}
+  doc.setTextColor(255);doc.setFontSize(11);doc.setFont(undefined,"bold");doc.text("REGIONE MOLISE",23,7);
+  doc.setFontSize(7);doc.setFont(undefined,"normal");
+  doc.text("Piano della Performance Organizzativa 2026-2028",23,11.5);
+  doc.text(sC+" - "+sN,23,15);
+
+  // Helper: section card
+  var card=function(title,rows,accent){
+    if(y>H-30){doc.addPage();y=10;}
+    // Title bar
+    doc.setFillColor(accent==="green"?0:accent==="gold"?184:0,accent==="green"?135:accent==="gold"?134:51,accent==="green"?88:accent==="gold"?11:102);
+    doc.rect(mx,y,mxR-mx,5,"F");
+    doc.setTextColor(255);doc.setFontSize(7);doc.setFont(undefined,"bold");
+    doc.text(title,mx+3,y+3.5);y+=6;
+    // Rows
+    doc.setTextColor(0);doc.setFont(undefined,"normal");doc.setFontSize(6.5);
+    rows.forEach(function(r){
+      if(y>H-12){doc.addPage();y=10;}
+      doc.setFont(undefined,"bold");doc.text(r[0]+":",mx+2,y+3);
+      doc.setFont(undefined,"normal");
+      var val=String(r[1]||"-");
+      if(val.length>120)val=val.substring(0,120)+"...";
+      doc.text(val,mx+55,y+3);
+      doc.setDrawColor(230);doc.line(mx,y+4.5,mxR,y+4.5);
+      y+=5.5;
+    });
+    y+=3;
+  };
+
+  if(isStr){
+    card("OBIETTIVO STRATEGICO",[
+      ["Codice",d.codice],["Nome/Descrizione",d.nome],["Peso",d.peso+"%"],
+      ["Tipo",d.tipoAB==="A"?"Tipo A - TRASVERSALE":d.tipoAB==="B"?"Tipo B - DI POLICY":"-"]
+    ]);
+    card("STRUTTURA",[["Area",area],["Servizio",sN],["Codice Servizio",sC]]);
+    card("VALORE PUBBLICO",[
+      ["Dimensioni di Impatto",(d.impatto||[]).join(", ")||"-"],
+      ["Specifico",(d.specifico||[]).join(", ")||"-"]
+    ]);
+    var misNome="";window.MISSIONI.forEach(function(m){if(m.cod===d.missione)misNome=m.cod+" - "+m.nome});
+    var proNome="";window.PROGRAMMI.forEach(function(p){if(p.id===d.programma)proNome=p.id+" - "+p.nome});
+    card("MISSIONE E PROGRAMMA",[["Missione",misNome||d.missione||"-"],["Programma",proNome||d.programma||"-"]]);
+    card("STAKEHOLDERS / DEADLINE",[
+      ["Stakeholders",(d.stakeholders||[]).join(", ")+(d.stakeAltro?", "+d.stakeAltro:"")],
+      ["Deadline",d.deadlineType==="fine_mandato"?"Entro fine mandato":d.deadlinePeriodo||"-"]
+    ]);
+    card("RISULTATO ATTESO",[
+      ["Risultato finale",d.risultatoFinale||"-"],["Indicatore",d.indicatore||"-"],
+      ["Baseline",d.baseline||"-"],["Fonte",d.fonte||"-"],
+      ["UM",d.um||"-"],["Formula",d.formula||"-"]
+    ],"gold");
+    card("BES / LIVELLO TERRITORIALE",[
+      ["Livello territoriale",d.livTerr||"-"],
+      ["Tipo BES",(d.besTipo||[]).join(", ")||"-"],
+      ["Domini BES",(d.besDomini||[]).join(", ")||"-"]
+    ],"green");
+    if(d.note)card("NOTE",[["Note",d.note]]);
+  } else {
+    card("OBIETTIVO OPERATIVO",[
+      ["Codice",d.codice],["Nome/Descrizione",d.nome],["Peso",d.peso+"%"],["Deadline",d.deadline||"-"]
+    ]);
+    card("STRUTTURA",[["Area",area],["Servizio",sN],["Codice Servizio",sC]]);
+    card("RIFERIMENTO",[
+      ["Ob. Strategico",d.stratRifDesc||d.stratRif||"-"],
+      ["Natura obiettivo",d.natura||"-"]
+    ]);
+    card("RISCHIO CORRUZIONE",[
+      ["Rischio",d.rischio==="si"?"SI - "+d.rischioLivello:"NO"],
+      d.rischioDesc?["Descrizione",d.rischioDesc]:["",""]
+    ]);
+    card("STAKEHOLDERS",[
+      ["Destinatari",(d.stakeholders||[]).join(", ")+(d.stakeAltro?", "+d.stakeAltro:"")]
+    ]);
+    card("INDICATORI E RISULTATI",[
+      ["Importanza",d.importanza||"-"],["Indicatore",d.indicatore||"-"],
+      ["Baseline",d.baseline||"-"],["Fonte",d.fonte||"-"],
+      ["UM",d.um||"-"],["Formula",d.formula||"-"],
+      ["Risultato atteso 2026",d.ris2026||"-"]
+    ],"green");
+  }
+
+  // Footer
+  doc.setDrawColor(150);doc.line(mx,H-7,mxR,H-7);
+  doc.setFontSize(5);doc.setFont(undefined,"normal");doc.setTextColor(100);
+  doc.text("Regione Molise - Piano Performance Organizzativa 2026/2028",mx,H-3.5);
+  var pfx=isStr?"STR":"OPR";
+  doc.save("Scheda_"+pfx+"_web_"+sC.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".pdf");
+};
+
 // Archive handlers
 window._archivePDF=function(id){var e=window._SUBS.filter(function(s){return s.id===id})[0];if(e)try{window._mkPDF(e)}catch(err){alert("Errore PDF: "+err.message)}};
+window._archivePDFweb=function(id){var e=window._SUBS.filter(function(s){return s.id===id})[0];if(e)try{window._mkPDFweb(e)}catch(err){alert("Errore PDF web: "+err.message)}};
 window._archiveXLS=function(id){var e=window._SUBS.filter(function(s){return s.id===id})[0];if(e)try{window._mkXLS(e)}catch(err){alert("Errore XLS: "+err.message)}};
 window._archiveDel=function(id){
   if(!confirm("Eliminare questa scheda?"))return;
@@ -776,6 +947,60 @@ window._exportAll=function(){
   XLSX.writeFile(wb,"Piano_Performance_"+new Date().toISOString().slice(0,10)+".xlsx");
 };
 
+// Esporta pacchetto completo: un Excel multi-foglio + scarica tutti i PDF
+window._exportPacchetto=function(){
+  var subs=window._SUBS;if(!subs.length){alert("Nessun dato");return}
+  // Sort by service code alphabetically
+  var sorted=subs.slice().sort(function(a,b){
+    var sa=a.serviceCode+a.type+(a.data.codice||"");
+    var sb=b.serviceCode+b.type+(b.data.codice||"");
+    return sa<sb?-1:sa>sb?1:0;
+  });
+  // 1. Excel completo multi-foglio
+  var wb=XLSX.utils.book_new();
+  // Riepilogo generale
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sorted.map(function(e){var d=e.data;return{
+    Tipo:e.type==="strategic"?"STR":"OPR",Area:e.areaCode,Servizio:e.serviceCode,
+    Servizio_Nome:e.serviceName,Codice:d.codice,Descrizione:d.nome,Peso:(d.peso||"")+"%",
+    OVP_Rif:d.ovpRef||"",Indicatore:d.indicatore,UM:d.um,Baseline:d.baseline,Fonte:d.fonte,
+    Autore:e.createdBy,Creato:e.createdAt
+  }})),"Riepilogo");
+  // OVP
+  var ovps=window._loadOVP()||[];
+  var ovpRows=[];
+  ovps.forEach(function(o){o.indicatori.forEach(function(ind){
+    ovpRows.push({OVP:o.cod,Nome_OVP:o.nome.substring(0,60),Indicatore:ind.nome,Formula:ind.formula,
+      Fonte:ind.fonte,Baseline:ind.baseline,Target_2026:ind.t1,Target_2027:ind.t2,Target_2028:ind.t3,
+      Tipo:ind.tipo,BES:ind.bes,Missioni:o.missioni.join(", ")});
+  })});
+  if(ovpRows.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ovpRows),"OVP_Indicatori");
+  // Un foglio per servizio
+  var bySvc={};sorted.forEach(function(e){if(!bySvc[e.serviceCode])bySvc[e.serviceCode]=[];bySvc[e.serviceCode].push(e)});
+  Object.keys(bySvc).sort().forEach(function(sc){
+    var items=bySvc[sc];
+    var rows=items.map(function(e){var d=e.data;return{
+      Tipo:e.type==="strategic"?"STR":"OPR",Codice:d.codice,Descrizione:d.nome,Peso:(d.peso||"")+"%",
+      Indicatore:d.indicatore,UM:d.um,Baseline:d.baseline,Fonte:d.fonte,
+      Ris2026:d.ris2026||"",Ris2027:d.ris2027||"",Ris2028:d.ris2028||""
+    }});
+    var sheetName=sc.substring(0,31); // Excel sheet name max 31 chars
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),sheetName);
+  });
+  XLSX.writeFile(wb,"Pacchetto_Performance_"+new Date().toISOString().slice(0,10)+".xlsx");
+  
+  // 2. Genera tutti i PDF in sequenza
+  alert("Excel pacchetto scaricato!\n\nOra verranno generati "+sorted.length+" PDF...\n(Uno ogni 500ms per non sovraccaricare il browser)");
+  var idx=0;
+  var genNext=function(){
+    if(idx>=sorted.length)return;
+    try{window._mkPDF(sorted[idx])}catch(e){console.error(e)}
+    idx++;
+    if(idx<sorted.length)setTimeout(genNext,500);
+    else alert("Generazione completata: "+sorted.length+" PDF scaricati");
+  };
+  setTimeout(genNext,1000);
+};
+
 // Excel export for indicator dashboards
 window._exportIndicatoriSTR=function(){
   var subs=window._SUBS.filter(function(s){return s.type==="strategic"});
@@ -785,10 +1010,10 @@ window._exportIndicatoriSTR=function(){
     Area:e.areaCode,Servizio:e.serviceCode,Servizio_Nome:e.serviceName,Codice:d.codice,Descrizione:d.nome,Peso:d.peso+"%",
     Impatto:(d.impatto||[]).join("; "),Specifico:(d.specifico||[]).join("; "),
     Missione:d.missione,Programma:d.programma,
-    Trasversali:(d.trasversali||[]).join("; "),Stakeholders:(d.stakeholders||[]).join("; "),
+    Trasversali:([]).join("; "),Stakeholders:(d.stakeholders||[]).join("; "),
     Deadline:d.deadlineType==="fine_mandato"?"Fine mandato":d.deadlineType==="periodo"?d.deadlinePeriodo:"-",
     Risultato_Finale:d.risultatoFinale,Indicatore:d.indicatore,UM:d.um,Baseline:d.baseline,Fonte:d.fonte,Formula:d.formula,
-    BES:(d.bes||[]).join("; "),BES_Nazionale:(d.besNaz||[]).join("; "),BES_Territori:(d.besTer||[]).join("; "),
+    BES:(d.bes||[]).join("; "),BES_Nazionale:(d.besDomini||d.besNaz||[]).join("; "),BES_Territori:(d.besDomini||d.besTer||[]).join("; "),
     Tipo_AB:d.tipoAB||"",Livello_Territoriale:d.livTerr||"",Note:d.note
   }})),"Indicatori Strategici");
   XLSX.writeFile(wb,"Indicatori_Strategici_"+new Date().toISOString().slice(0,10)+".xlsx");
@@ -814,7 +1039,6 @@ window._exportPerArea=function(){
   var rows=[];Object.keys(areas).sort().forEach(function(ac){
     var a=areas[ac];var nS=a.strs.length,nO=a.oprs.length;
     var imp={};a.strs.forEach(function(e){(e.data.impatto||[]).forEach(function(i){imp[i]=(imp[i]||0)+1})});
-    var trv={};a.strs.forEach(function(e){(e.data.trasversali||[]).forEach(function(t){trv[t]=(trv[t]||0)+1})});
     var rSi=a.oprs.filter(function(e){return e.data.rischio==="si"}).length;
     rows.push({Area:ac,Nome_Area:a.name,Tot_STR:nS,Tot_OPR:nO,Totale:nS+nO,
       Impatti:Object.keys(imp).map(function(k){return k+"("+imp[k]+")"}).join(", "),
@@ -862,6 +1086,7 @@ document.addEventListener("click",function(evt){
   var b=evt.target;if(!b.dataset||!b.dataset.act||!b.dataset.eid)return;
   var a=b.dataset.act,id=b.dataset.eid;
   if(a==="pdf")window._archivePDF(id);
+  else if(a==="pdfweb")window._archivePDFweb(id);
   else if(a==="xls")window._archiveXLS(id);
   else if(a==="del")window._archiveDel(id);
   else if(a==="edit")window._archiveEdit(id);
@@ -890,17 +1115,21 @@ function PwdCell(p){
     h("button",{onClick:function(){setShow(!show)},style:{background:"none",border:"1px solid #d9dadb",borderRadius:3,cursor:"pointer",padding:"1px 6px",fontSize:9,color:"#5c6f82"}},show?"Nascondi":"Mostra")
   );
 }
-// ═══ STRATEGIC FORM (Allegato 2) ═══
+// ═══ STRATEGIC FORM ═══
+// ═══ STRATEGIC FORM ═══
 function StrForm(p){
   var d=p.d,u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
+  // Programmi filtrati per missione selezionata
+  var filtProg=d.missione?window.PROGRAMMI.filter(function(pr){return pr.mis===d.missione}):[];
+  // Priorita per missione
+  var priTxt="";window.PRIORITA.forEach(function(pr){if(pr.mis===d.missione)priTxt=pr.txt});
   return h("div",null,
     h("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:10}},
-      h(F,{l:"Codice Obiettivo Strategico",r:1},h("input",{style:IS,value:d.codice,onChange:u("codice"),placeholder:"es. III.1.1"})),
+      h(F,{l:"Codice Obiettivo Strategico"},h("input",{style:Object.assign({},IS,{background:"#f0f4fa",fontWeight:700}),value:d.codice,onChange:u("codice")})),
       h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",min:1,max:100,value:d.peso,onChange:u("peso")})),
       h(F,{l:"Tipo Obiettivo",r:1},h("select",{style:IS,value:d.tipoAB||"",onChange:function(e){
         var v=e.target.value;var n=Object.assign({},d);n.tipoAB=v;
-        n.specifico=v==="A"?["TRASVERSALE"]:v==="B"?["DI POLICY"]:[];
-        p.s(n);
+        n.specifico=v==="A"?["TRASVERSALE"]:v==="B"?["DI POLICY"]:[];p.s(n);
       }},h("option",{value:""},"-"),h("option",{value:"A"},"Tipo A - TRASVERSALE"),h("option",{value:"B"},"Tipo B - DI POLICY")))
     ),
     d.tipoAB?h("div",{style:{background:d.tipoAB==="A"?"#e8f0fe":"#e6f4ed",borderRadius:4,padding:"8px 12px",marginBottom:10,fontSize:12,fontWeight:600,color:d.tipoAB==="A"?"#0066cc":"#008758"}},
@@ -911,15 +1140,42 @@ function StrForm(p){
       h("div",{style:{fontWeight:700,fontSize:12,color:"#003366",marginBottom:6,borderBottom:"2px solid #003366",paddingBottom:4}},"VALORE PUBBLICO - DIMENSIONI DI IMPATTO"),
       h(CG,{o:window.IMP_STR,v:d.impatto,fn:u("impatto"),c:3})
     ),
-    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-      h(F,{l:"MISSIONE"},h("input",{style:IS,value:d.missione,onChange:u("missione")})),
-      h(F,{l:"PROGRAMMA"},h("input",{style:IS,value:d.programma,onChange:u("programma")}))
+    // Missione e Programma da dropdown
+    h("div",{className:"cd",style:{padding:12,marginBottom:10}},
+      h("div",{style:{fontWeight:700,fontSize:12,color:"#003366",marginBottom:6,borderBottom:"2px solid #003366",paddingBottom:4}},"MISSIONE E PROGRAMMA (DEFR)"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
+        h(F,{l:"MISSIONE"},h("select",{style:IS,value:d.missione||"",onChange:function(e){
+          var n=Object.assign({},d);n.missione=e.target.value;n.programma="";p.s(n);
+        }},h("option",{value:""},"-- Seleziona missione --"),
+          window.MISSIONI.map(function(m){return h("option",{key:m.cod,value:m.cod},"MISSIONE "+m.cod+" - "+m.nome)})
+        )),
+        h(F,{l:"PROGRAMMA"},h("select",{style:IS,value:d.programma||"",onChange:u("programma")},
+          h("option",{value:""},"-- Seleziona programma --"),
+          filtProg.map(function(pr){return h("option",{key:pr.id,value:pr.id},"Prog. "+pr.id+" - "+pr.nome)})
+        ))
+      ),
+      priTxt?h("div",{style:{marginTop:6,padding:"6px 10px",background:"#fff3cd",borderRadius:3,fontSize:11,fontWeight:600,color:"#856404"}},"Priorita Regionale: "+priTxt):null
     ),
-    h(F,{l:"Obiettivi Trasversali"},h(CG,{o:window.TRV,v:d.trasversali,fn:u("trasversali"),c:1})),
+    // Collegamento OVP
+    h("div",{className:"cd",style:{padding:12,marginBottom:10,borderLeft:"3px solid #8e44ad"}},
+      h("div",{style:{fontWeight:700,fontSize:12,color:"#8e44ad",marginBottom:6}},"COLLEGAMENTO OBIETTIVO VALORE PUBBLICO"),
+      h(F,{l:"Obiettivo VP di riferimento"},h("select",{style:IS,value:d.ovpRef||"",onChange:u("ovpRef")},
+        h("option",{value:""},"-- Nessun collegamento --"),
+        (window._loadOVP()||[]).map(function(ovp){return h("option",{key:ovp.id,value:ovp.id},ovp.cod+" - "+ovp.nome.substring(0,70))})
+      )),
+      d.ovpRef?(function(){
+        var ovp=null;(window._loadOVP()||[]).forEach(function(o){if(o.id===d.ovpRef)ovp=o});
+        if(!ovp)return null;
+        return h("div",{style:{marginTop:6,padding:8,background:"#f5f0fa",borderRadius:4,fontSize:11}},
+          h("div",{style:{fontWeight:600,color:"#8e44ad",marginBottom:4}},ovp.cod+": "+ovp.nome.substring(0,80)),
+          h("div",{style:{color:"#5c6f82"}},"Indicatori VP: "+ovp.indicatori.map(function(i){return i.nome}).join(", "))
+        );
+      })():null
+    ),
     h(F,{l:"Stakeholders"},h(CG,{o:window.STK,v:d.stakeholders,fn:u("stakeholders"),c:2}),h("input",{style:Object.assign({},IS,{marginTop:4}),value:d.stakeAltro,onChange:u("stakeAltro"),placeholder:"Altro specificare..."})),
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
       h(F,{l:"Deadline"},h("select",{style:IS,value:d.deadlineType,onChange:u("deadlineType")},h("option",{value:""},"-"),h("option",{value:"fine_mandato"},"Entro fine mandato"),h("option",{value:"periodo"},"Anni/Periodo"))),
-      d.deadlineType==="periodo"?h(F,{l:"Specificare periodo"},h("input",{style:IS,value:d.deadlinePeriodo,onChange:u("deadlinePeriodo")})):null
+      d.deadlineType==="periodo"?h(F,{l:"Seleziona data/periodo"},h("input",{style:IS,type:"date",value:d.deadlinePeriodo,onChange:u("deadlinePeriodo")})):null
     ),
     h("div",{className:"cd",style:{padding:12,marginBottom:10,borderLeft:"3px solid #b8860b"}},
       h("div",{style:{fontWeight:700,color:"#b8860b",marginBottom:6}},"RISULTATO ATTESO"),
@@ -935,27 +1191,28 @@ function StrForm(p){
     h(F,{l:"Livello territoriale"},h("select",{style:IS,value:d.livTerr||"",onChange:u("livTerr")},
       h("option",{value:""},"-"),window.LIV_TERR.map(function(l){return h("option",{key:l,value:l},l)})
     )),
-    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}},
-      h("div",{className:"cd",style:{padding:12}},
-        h("div",{style:{fontWeight:700,fontSize:12,color:"#003366",marginBottom:6,borderBottom:"2px solid #003366",paddingBottom:4}},"BES Nazionale"),
-        h(CG,{o:window.BES_NAZ,v:d.besNaz||[],fn:u("besNaz"),c:2})
+    // BES unificato: tipo + domini
+    h("div",{className:"cd",style:{padding:12,marginBottom:10}},
+      h("div",{style:{fontWeight:700,fontSize:12,color:"#003366",marginBottom:6,borderBottom:"2px solid #003366",paddingBottom:4}},"BES - Benessere Equo e Sostenibile"),
+      h("div",{style:{marginBottom:8}},
+        h("div",{style:{fontWeight:600,fontSize:11,marginBottom:4}},"Tipo BES"),
+        h(CG,{o:window.BES_TIPI,v:d.besTipo||[],fn:u("besTipo"),c:3})
       ),
-      h("div",{className:"cd",style:{padding:12}},
-        h("div",{style:{fontWeight:700,fontSize:12,color:"#008758",marginBottom:6,borderBottom:"2px solid #008758",paddingBottom:4}},"BES dei Territori"),
-        h(CG,{o:window.BES_TER,v:d.besTer||[],fn:u("besTer"),c:2})
-      )
+      (d.besTipo&&d.besTipo.length>0)?h("div",null,
+        h("div",{style:{fontWeight:600,fontSize:11,marginBottom:4}},"Domini BES (seleziona)"),
+        h(CG,{o:window.BES_DOMINI,v:d.besDomini||[],fn:u("besDomini"),c:3})
+      ):null
     ),
     h(F,{l:"Note"},h("textarea",{style:TS,value:d.note,onChange:u("note")}))
   );
 }
 
-// ═══ OPERATIVE FORM (Allegato 3) ═══
+// ═══ OPERATIVE FORM ═══
 function OprForm(p){
   var d=p.d,u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
-  var natItems=[];window.EFF_OPR.forEach(function(g){g.items.forEach(function(i){natItems.push(g.d+" - "+i)})});
   return h("div",null,
     h("div",{style:{display:"grid",gridTemplateColumns:"3fr 1fr",gap:10}},
-      h(F,{l:"Codice Obiettivo Operativo",r:1},h("input",{style:IS,value:d.codice,onChange:u("codice"),placeholder:"es. OPR.1.1"})),
+      h(F,{l:"Codice Obiettivo Operativo"},h("input",{style:Object.assign({},IS,{background:"#f0f4fa",fontWeight:700}),value:d.codice,onChange:u("codice")})),
       h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",min:1,value:d.peso,onChange:u("peso")}))
     ),
     h(F,{l:"Obiettivo Operativo (NOME/DESCRIZIONE)",r:1},h("textarea",{style:TS,value:d.nome,onChange:u("nome")})),
@@ -964,8 +1221,12 @@ function OprForm(p){
       h("div",{style:{fontSize:11,fontWeight:600,color:"#0066cc"}},"Ob. Strategico di riferimento: "),
       h("div",{style:{fontSize:12,marginTop:2}},p.strDesc)
     ):null,
-    h(F,{l:"NATURA DELL'OBIETTIVO (Dimensione - Modalita)"},h("select",{style:IS,value:d.natura,onChange:u("natura")},
-      [h("option",{key:"_",value:""},"-")].concat(natItems.map(function(n){return h("option",{key:n,value:n},n)}))
+    // Natura: 3 macrogruppi con optgroup
+    h(F,{l:"NATURA DELL'OBIETTIVO"},h("select",{style:IS,value:d.natura,onChange:u("natura")},
+      h("option",{value:""},"-"),
+      window.EFF_OPR.map(function(g){return h("optgroup",{key:g.d,label:g.d},
+        g.items.map(function(i){return h("option",{key:g.d+"-"+i,value:g.d+" - "+i},g.d+" - "+i)})
+      )})
     )),
     h("div",{className:"cd",style:{padding:12,marginBottom:10}},
       h("div",{style:{fontWeight:700,fontSize:12,marginBottom:6}},"Rischio corruzione"),
@@ -1000,6 +1261,7 @@ function OprForm(p){
   );
 }
 
+
 // ═══ DASHBOARD BI COMPLETA ═══
 function Dash(p){
   var s=p.subs;
@@ -1027,8 +1289,6 @@ function Dash(p){
   var specC={};window.SPEC_STR.forEach(function(i){specC[i]=0});
   strs.forEach(function(x){(x.data.specifico||[]).forEach(function(i){if(specC[i]!==undefined)specC[i]++})});
   // Trasversali STR
-  var trvC={};window.TRV.forEach(function(t){trvC[t]=0});
-  strs.forEach(function(x){(x.data.trasversali||[]).forEach(function(t){if(trvC[t]!==undefined)trvC[t]++})});
   // Stakeholders (tutti)
   var stkC={};window.STK.forEach(function(t){stkC[t]=0});
   s.forEach(function(x){(x.data.stakeholders||[]).forEach(function(t){if(stkC[t]!==undefined)stkC[t]++})});
@@ -1039,10 +1299,10 @@ function Dash(p){
   var dlFM=strs.filter(function(x){return x.data.deadlineType==="fine_mandato"}).length;
   var dlPer=strs.filter(function(x){return x.data.deadlineType==="periodo"}).length;
   // BES
-  var besNazC={};window.BES_NAZ.forEach(function(b){besNazC[b]=0});
-  strs.forEach(function(x){(x.data.besNaz||x.data.bes||[]).forEach(function(b){if(besNazC[b]!==undefined)besNazC[b]++})});
-  var besTerC={};window.BES_TER.forEach(function(b){besTerC[b]=0});
-  strs.forEach(function(x){(x.data.besTer||[]).forEach(function(b){if(besTerC[b]!==undefined)besTerC[b]++})});
+  var besDomC={};window.BES_DOMINI.forEach(function(b){besDomC[b]=0});
+  strs.forEach(function(x){(x.data.besNaz||x.data.bes||[]).forEach(function(b){if(besDomC[b]!==undefined)besDomC[b]++})});
+  var besDomC2={};window.BES_DOMINI.forEach(function(b){besDomC2[b]=0});
+  strs.forEach(function(x){(x.data.besTer||[]).forEach(function(b){if(besDomC2[b]!==undefined)besDomC2[b]++})});
   // Tipo A/B
   var tipoA=strs.filter(function(x){return x.data.tipoAB==="A"}).length;
   var tipoB=strs.filter(function(x){return x.data.tipoAB==="B"}).length;
@@ -1138,17 +1398,16 @@ function Dash(p){
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
       h("div",{className:"cd",style:{padding:12}},
         sec("Obiettivi Trasversali (Strategici)","#b8860b"),
-        nS?window.TRV.map(function(t){return bar(t,trvC[t],nS,"#b8860b")}):h("div",{style:{color:"#999",fontSize:11}},"--")
       ),
       h("div",{className:"cd",style:{padding:12}},
         sec("Stakeholders Coinvolti (Tutti)","#003366"),
         window.STK.map(function(t){return bar(t,stkC[t],s.length,"#003366")}),
         h("div",{style:{marginTop:16}}),
-        sec("BES Nazionale (Strategici)","#003366"),
-        nS?window.BES_NAZ.map(function(b){return bar(b,besNazC[b],nS,"#003366")}):h("div",{style:{color:"#999",fontSize:11}},"--"),
+        sec("BES (tutti gli Strategici)","#003366"),
+        nS?window.BES_DOMINI.map(function(b){return bar(b,besDomC[b],nS,"#003366")}):h("div",{style:{color:"#999",fontSize:11}},"--"),
         h("div",{style:{marginTop:12}}),
-        sec("BES dei Territori (Strategici)","#008758"),
-        nS?window.BES_TER.map(function(b){return bar(b,besTerC[b],nS,"#008758")}):h("div",{style:{color:"#999",fontSize:11}},"--"),
+        sec("Tipo BES (Strategici)","#008758"),
+        nS?window.BES_DOMINI.map(function(b){return bar(b,besDomC2[b],nS,"#008758")}):h("div",{style:{color:"#999",fontSize:11}},"--"),
         h("div",{style:{marginTop:12}}),
         sec("Tipo Obiettivo A/B (Strategici)","#0066cc"),
         nS?h("div",null,
@@ -1237,7 +1496,6 @@ function Dash(p){
           // Impatto
           var impC={};ad.strs.forEach(function(e){(e.data.impatto||[]).forEach(function(i){impC[i]=(impC[i]||0)+1})});
           // Trasversali
-          var trvC={};ad.strs.forEach(function(e){(e.data.trasversali||[]).forEach(function(t){trvC[t]=(trvC[t]||0)+1})});
           // Stakeholders
           var stkC2={};ad.all.forEach(function(e){(e.data.stakeholders||[]).forEach(function(t){stkC2[t]=(stkC2[t]||0)+1})});
           // Rischio
@@ -1392,7 +1650,6 @@ function Dash(p){
           var aOprs=a.items.filter(function(x){return x.type==="operative"});
           // Aggregate impatto for this area
           var aImp={};aStrs.forEach(function(x){(x.data.impatto||[]).forEach(function(i){aImp[i]=(aImp[i]||0)+1})});
-          var aTrv={};aStrs.forEach(function(x){(x.data.trasversali||[]).forEach(function(t){aTrv[t]=(aTrv[t]||0)+1})});
           var aRisk=aOprs.filter(function(x){return x.data.rischio==="si"}).length;
           var aPeso=0;aStrs.forEach(function(x){aPeso+=parseFloat(x.data.peso)||0});
           var aNat={};aOprs.forEach(function(x){var n=x.data.natura;if(n){var dim=n.split(" - ")[0];aNat[dim]=(aNat[dim]||0)+1}});
@@ -1410,9 +1667,7 @@ function Dash(p){
                 aRisk>0?h("span",{style:{fontSize:10,color:"#d9364f"}},"Rischio: "+aRisk):null
               )
             ),
-            // Impatto and trasversali for this area
             Object.keys(aImp).length?h("div",{style:{fontSize:10,color:"#0066cc",marginBottom:3}},"Impatto: "+Object.keys(aImp).map(function(k){return k+"("+aImp[k]+")"}).join(", ")):null,
-            Object.keys(aTrv).length?h("div",{style:{fontSize:10,color:"#b8860b",marginBottom:3}},"Trasversali: "+Object.keys(aTrv).map(function(k){return k.substring(0,25)+"("+aTrv[k]+")"}).join(", ")):null,
             Object.keys(aNat).length?h("div",{style:{fontSize:10,color:"#008758",marginBottom:3}},"Natura OPR: "+Object.keys(aNat).map(function(k){return k+"("+aNat[k]+")"}).join(", ")):null,
             // Dettaglio schede per area
             tbl(["Tipo","Servizio","Codice","Descrizione","Peso","Indicatore","UM","Baseline","Fonte"],
@@ -1474,6 +1729,56 @@ function Dash(p){
             ):h("div",{style:{fontSize:10,color:"#5c6f82"}},"("+sv.items.length+" schede - vedi export Excel per dettaglio)")
           );
         });
+      })()
+    ),
+
+    // ── OVP - VALORE PUBBLICO ──
+    h("div",{className:"cd",style:{padding:12,marginBottom:12}},
+      sec("Obiettivi di Valore Pubblico — Copertura e Indicatori","#8e44ad"),
+      (function(){
+        var ovps=window._loadOVP()||[];
+        return h("div",null,
+          h("div",{style:{display:"grid",gridTemplateColumns:"repeat("+ovps.length+",1fr)",gap:8,marginBottom:12}},
+            ovps.map(function(ovp){
+              var linked=strs.filter(function(x){return x.data.ovpRef===ovp.id}).length;
+              var pct=nS>0?Math.round(linked/nS*100):0;
+              return h("div",{key:ovp.id,className:"kc",style:{borderLeft:"3px solid #8e44ad",textAlign:"left",padding:10}},
+                h("div",{style:{fontWeight:700,color:"#8e44ad",fontSize:11}},ovp.cod),
+                h("div",{style:{fontSize:9,color:"#5c6f82",marginBottom:4}},ovp.nome.substring(0,40)),
+                h("div",{style:{fontSize:18,fontWeight:700,color:linked>0?"#008758":"#d9364f"}},linked),
+                h("div",{style:{fontSize:9,color:"#5c6f82"}},"STR collegati ("+pct+"% copertura)")
+              )
+            })
+          ),
+          // Indicatori OVP table
+          h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:9}},
+            h("thead",null,h("tr",null,
+              ["OVP","Indicatore","Tipo","Baseline","Target 2026","Target 2027","Target 2028","BES/PNRR","STR collegati"].map(function(hd,i){
+                return h("th",{key:i,style:{padding:"4px 6px",background:"#8e44ad",color:"#fff",textAlign:"left",fontSize:8}},hd)
+              })
+            )),
+            h("tbody",null,(function(){
+              var rows=[];
+              ovps.forEach(function(ovp){
+                var linked=strs.filter(function(x){return x.data.ovpRef===ovp.id});
+                ovp.indicatori.forEach(function(ind,ii){
+                  rows.push(h("tr",{key:ovp.id+"-"+ii,style:{background:rows.length%2?"#fafafa":"#fff"}},
+                    h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontWeight:ii===0?700:400,color:"#8e44ad"}},ii===0?ovp.cod:""),
+                    h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.nome),
+                    h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.tipo||"-"),
+                    h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.baseline||"-"),
+                    h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontWeight:600,color:"#0066cc"}},ind.t1||"-"),
+                    h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.t2||"-"),
+                    h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.t3||"-"),
+                    h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontSize:8}},ind.bes||"-"),
+                    h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ii===0?linked.length+"":"")
+                  ));
+                });
+              });
+              return rows;
+            })())
+          )
+        );
       })()
     ),
 
@@ -1686,13 +1991,13 @@ function App(){
   // Start new STR (with credential check)
   var newStr=function(){
     askCredNew(function(name,hash){
-      setFType("strategic");setFData(window.emptySTR());setFEditId(null);setFParentStr(null);setV("form");
+      setFType("strategic");setFData(window.emptySTR(svc?svc.code:""));setFEditId(null);setFParentStr(null);setV("form");
     });
   };
   // Start new OPR linked to a strategic
   var newOpr=function(strEntry){
     askCredNew(function(name,hash){
-      setFType("operative");var d=window.emptyOPR();d.stratRif=strEntry.data.codice;d.stratRifDesc=strEntry.data.nome;setFData(d);setFEditId(null);setFParentStr(strEntry.id);setV("form");
+      setFType("operative");var d=window.emptyOPR(svc?svc.code:"");d.stratRif=strEntry.data.codice;d.stratRifDesc=strEntry.data.nome;setFData(d);setFEditId(null);setFParentStr(strEntry.id);setV("form");
     });
   };
   // Edit existing (requires matching password)
@@ -1768,6 +2073,7 @@ function App(){
     if(authorLine) archHTML+='<div style="margin-top:3px">'+authorLine+'</div>';
     archHTML+='</div><div style="display:flex;gap:3px;flex-shrink:0">';
     archHTML+='<button data-act="pdf" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#fff;color:#0066cc;border:1.5px solid #0066cc;border-radius:3px;cursor:pointer">PDF</button>';
+    archHTML+='<button data-act="pdfweb" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#e8f0fe;color:#003366;border:1.5px solid #003366;border-radius:3px;cursor:pointer">PDF Web</button>';
     archHTML+='<button data-act="xls" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#fff;color:#008758;border:1.5px solid #008758;border-radius:3px;cursor:pointer">XLS</button>';
     archHTML+='<button data-act="edit" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#e8f0fe;color:#0066cc;border:1.5px solid #0066cc;border-radius:3px;cursor:pointer">Modifica</button>';
     archHTML+='<button data-act="del" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;background:none;border:1px solid #d9364f;border-radius:3px;color:#d9364f;cursor:pointer" title="Elimina questa scheda">Elimina</button>';
@@ -1938,6 +2244,7 @@ function App(){
               h("div",{style:{display:"flex",gap:3}},
                 h("button",{onClick:function(){editEntry(str)},style:{padding:"3px 8px",fontSize:10,background:"#e8f0fe",border:"1px solid #0066cc",borderRadius:3,color:"#0066cc",cursor:"pointer",fontWeight:600}},"Modifica"),
                 h("button",{onClick:function(){try{window._mkPDF(str);flash("PDF!")}catch(e){flash("Errore","err")}},style:{padding:"3px 8px",fontSize:10,background:"#fff",border:"1px solid #0066cc",borderRadius:3,color:"#0066cc",cursor:"pointer"}},"PDF"),
+                h("button",{onClick:function(){try{window._mkPDFweb(str);flash("PDF Web!")}catch(e){flash("Errore","err")}},style:{padding:"3px 8px",fontSize:10,background:"#e8f0fe",border:"1px solid #003366",borderRadius:3,color:"#003366",cursor:"pointer"}},"PDF Web"),
                 h("button",{onClick:function(){try{window._mkXLS(str);flash("XLS!")}catch(e){flash("Errore","err")}},style:{padding:"3px 8px",fontSize:10,background:"#fff",border:"1px solid #008758",borderRadius:3,color:"#008758",cursor:"pointer"}},"XLS")
               )
             ),
@@ -1957,6 +2264,7 @@ function App(){
                 h("div",{style:{display:"flex",gap:2}},
                   h("button",{onClick:function(){editEntry(opr)},style:{padding:"2px 6px",fontSize:9,background:"#e6f4ed",border:"1px solid #008758",borderRadius:3,color:"#008758",cursor:"pointer"}},"Mod"),
                   h("button",{onClick:function(){try{window._mkPDF(opr)}catch(e){}},style:{padding:"2px 6px",fontSize:9,background:"#fff",border:"1px solid #0066cc",borderRadius:3,color:"#0066cc",cursor:"pointer"}},"PDF"),
+                  h("button",{onClick:function(){try{window._mkPDFweb(opr)}catch(e){}},style:{padding:"2px 6px",fontSize:9,background:"#e8f0fe",border:"1px solid #003366",borderRadius:3,color:"#003366",cursor:"pointer"}},"Web"),
                   h("button",{onClick:function(){try{window._mkXLS(opr)}catch(e){}},style:{padding:"2px 6px",fontSize:9,background:"#fff",border:"1px solid #008758",borderRadius:3,color:"#008758",cursor:"pointer"}},"XLS")
                 )
               )}),
@@ -1972,7 +2280,7 @@ function App(){
       v==="form"&&svc&&fData?h("div",null,
         h("button",{onClick:function(){setV("service")},style:{background:"none",border:"none",color:"#0066cc",cursor:"pointer",fontSize:12,fontWeight:600,marginBottom:8}},"< Torna al servizio"),
         h("div",{className:"cd",style:{padding:"16px"}},
-          h("h3",{style:{fontSize:14,fontWeight:700,color:fType==="strategic"?"#003366":"#008758",marginBottom:12,paddingBottom:6,borderBottom:"2px solid "+(fType==="strategic"?"#003366":"#008758")}},fType==="strategic"?"Scheda Obiettivo Strategico (Allegato 2)":"Scheda Obiettivo Operativo (Allegato 3)"),
+          h("h3",{style:{fontSize:14,fontWeight:700,color:fType==="strategic"?"#003366":"#008758",marginBottom:12,paddingBottom:6,borderBottom:"2px solid "+(fType==="strategic"?"#003366":"#008758")}},fType==="strategic"?"Scheda Obiettivo Strategico":"Scheda Obiettivo Operativo"),
           fType==="strategic"?h(StrForm,{d:fData,s:setFData}):h(OprForm,{d:fData,s:setFData,strDesc:fData.stratRifDesc||fData.stratRif||""}),
           h("button",{onClick:saveForm,style:{width:"100%",padding:"12px",background:fType==="strategic"?"#0066cc":"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:700,fontSize:14,cursor:"pointer",marginTop:14}},fEditId?"Aggiorna Scheda":"Salva e Scarica PDF + Excel")
         )
@@ -1984,6 +2292,7 @@ function App(){
           h("div",null,h("h1",{style:{fontFamily:"Lora,serif",fontSize:18,fontWeight:700}},"Pannello Admin"),h("p",{style:{color:"#5c6f82",fontSize:11}},subs.length+" schede | "+users.length+" utenti registrati")),
           h("div",{style:{display:"flex",gap:4}},
             h("button",{onClick:function(){window._exportAll()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto"),
+            h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Pacchetto"),
             h("button",{onClick:function(){window._recover()},style:{padding:"8px 16px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Recupera Dati")
           )
         ),
@@ -1991,6 +2300,8 @@ function App(){
           h("button",{className:"tb"+(aTab==="dashboard"?" ac":""),onClick:function(){setATab("dashboard")}},"Dashboard"),
           h("button",{className:"tb"+(aTab==="list"?" ac":""),onClick:function(){setATab("list")}},"Schede ("+subs.length+")"),
           h("button",{className:"tb"+(aTab==="users"?" ac":""),onClick:function(){setATab("users")}},"Utenti ("+users.length+")"),
+          h("button",{className:"tb"+(aTab==="ovp"?" ac":""),onClick:function(){setATab("ovp")}},"OVP"),
+          h("button",{className:"tb"+(aTab==="tree"?" ac":""),onClick:function(){setATab("tree")}},"Alberatura"),
           h("button",{className:"tb"+(aTab==="admin_create"?" ac":""),onClick:function(){setATab("admin_create")}},"+ Inserisci Scheda")
         ),
         aTab==="dashboard"?(subs.length?h(Dash,{subs:subs}):h("div",{className:"cd",style:{textAlign:"center",padding:40}},"Compila almeno una scheda")):null,
@@ -2086,6 +2397,132 @@ function App(){
                   )
                 );
               });
+            })()
+          )
+        ):null,
+
+        // ── TAB OVP (Obiettivi Valore Pubblico) ──
+        aTab==="ovp"?h("div",null,
+          h("div",{className:"cd",style:{padding:16}},
+            h("div",{style:{fontWeight:700,fontSize:14,color:"#8e44ad",marginBottom:12,paddingBottom:6,borderBottom:"2px solid #8e44ad"}},"Obiettivi di Valore Pubblico 2026-2028"),
+            h("p",{style:{fontSize:11,color:"#5c6f82",marginBottom:14}},"Gestisci gli OVP e i relativi indicatori. Ogni OVP puo essere collegato a piu obiettivi strategici."),
+            (window._loadOVP()||[]).map(function(ovp){
+              // Count linked STR
+              var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
+              var linkedOprs=subs.filter(function(s){
+                if(s.type!=="operative")return false;
+                var parent=subs.filter(function(p){return p.id===s.parentId})[0];
+                return parent&&parent.data.ovpRef===ovp.id;
+              });
+              return h("div",{key:ovp.id,className:"cd",style:{marginBottom:12,borderLeft:"4px solid #8e44ad",overflow:"hidden"}},
+                h("div",{style:{padding:"12px 14px",background:"#f5f0fa"}},
+                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
+                    h("div",{style:{flex:1}},
+                      h("div",{style:{fontWeight:700,fontSize:14,color:"#8e44ad",marginBottom:4}},ovp.cod),
+                      h("div",{style:{fontSize:12,color:"#17324d"}},ovp.nome)
+                    ),
+                    h("div",{style:{display:"flex",gap:6,flexShrink:0}},
+                      h("span",{className:"tag tag-str"},"STR: "+linkedStrs.length),
+                      h("span",{className:"tag tag-opr"},"OPR: "+linkedOprs.length),
+                      h("span",{style:{fontSize:10,padding:"2px 6px",background:"#8e44ad",color:"#fff",borderRadius:3}},ovp.missioni.map(function(m){return"M"+m}).join(", "))
+                    )
+                  )
+                ),
+                // Indicatori
+                h("div",{style:{padding:"10px 14px"}},
+                  h("div",{style:{fontWeight:600,fontSize:11,color:"#5c6f82",marginBottom:6}},"Indicatori ("+ovp.indicatori.length+")"),
+                  h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:10}},
+                    h("thead",null,h("tr",null,
+                      ["Indicatore","Formula","Fonte","Baseline","Target 2026","Target 2027","Target 2028","Tipo","BES/PNRR"].map(function(hd,i){
+                        return h("th",{key:i,style:{padding:"4px 6px",background:"#8e44ad",color:"#fff",textAlign:"left",fontSize:9}},hd)
+                      })
+                    )),
+                    h("tbody",null,ovp.indicatori.map(function(ind,ii){
+                      return h("tr",{key:ii,style:{background:ii%2?"#fafafa":"#fff"}},
+                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontWeight:600}},ind.nome),
+                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontSize:9}},ind.formula||"-"),
+                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.fonte||"-"),
+                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.baseline||"-"),
+                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontWeight:600,color:"#0066cc"}},ind.t1||"-"),
+                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.t2||"-"),
+                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.t3||"-"),
+                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.tipo||"-"),
+                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontSize:9}},ind.bes||"-")
+                      )
+                    }))
+                  ),
+                  // Linked STR
+                  linkedStrs.length>0?h("div",{style:{marginTop:8}},
+                    h("div",{style:{fontWeight:600,fontSize:10,color:"#0066cc",marginBottom:4}},"Obiettivi Strategici collegati:"),
+                    linkedStrs.map(function(s){
+                      var myOprs=subs.filter(function(o){return o.type==="operative"&&o.parentId===s.id});
+                      return h("div",{key:s.id,style:{padding:"4px 8px",marginBottom:3,background:"#e8f0fe",borderRadius:3,fontSize:11}},
+                        h("span",{style:{fontWeight:700}},s.data.codice)," - ",s.serviceName," - ",s.data.nome.substring(0,50),
+                        myOprs.length?h("span",{style:{color:"#008758",marginLeft:6}}," ("+myOprs.length+" OPR)"):null
+                      )
+                    })
+                  ):h("div",{style:{marginTop:6,fontSize:10,color:"#999",fontStyle:"italic"}},"Nessun ob. strategico collegato a questo OVP")
+                )
+              )
+            })
+          )
+        ):null,
+
+        // ── TAB ALBERATURA ──
+        aTab==="tree"?h("div",null,
+          h("div",{className:"cd",style:{padding:16}},
+            h("div",{style:{fontWeight:700,fontSize:14,color:"#003366",marginBottom:12,paddingBottom:6,borderBottom:"2px solid #003366"}},"Alberatura Collegamenti OVP > STR > OPR"),
+            (window._loadOVP()||[]).map(function(ovp){
+              var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
+              if(!linkedStrs.length)return null;
+              return h("div",{key:ovp.id,style:{marginBottom:16}},
+                // OVP node
+                h("div",{style:{padding:"8px 14px",background:"#8e44ad",color:"#fff",borderRadius:4,fontWeight:700,fontSize:12,marginBottom:2}},
+                  ovp.cod+" - "+ovp.nome.substring(0,70)
+                ),
+                // STR branches
+                linkedStrs.map(function(str){
+                  var oprs=subs.filter(function(o){return o.type==="operative"&&o.parentId===str.id});
+                  return h("div",{key:str.id,style:{marginLeft:24,borderLeft:"3px solid #0066cc",paddingLeft:12,marginBottom:4}},
+                    h("div",{style:{padding:"6px 10px",background:"#e8f0fe",borderRadius:3,fontSize:11,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                      h("div",null,
+                        h("span",{className:"tag tag-str",style:{marginRight:4}},"STR"),
+                        h("span",{style:{fontWeight:700}},str.data.codice)," - ",
+                        h("span",{style:{color:"#5c6f82"}},(str.data.nome||"").substring(0,50))
+                      ),
+                      h("span",{style:{fontSize:10,color:"#0066cc"}},str.serviceCode+" | Peso: "+str.data.peso+"%")
+                    ),
+                    // OPR leaves
+                    oprs.map(function(opr){
+                      return h("div",{key:opr.id,style:{marginLeft:20,borderLeft:"2px solid #008758",paddingLeft:10,marginTop:2}},
+                        h("div",{style:{padding:"4px 8px",background:"#e6f4ed",borderRadius:3,fontSize:10,display:"flex",justifyContent:"space-between"}},
+                          h("div",null,
+                            h("span",{className:"tag tag-opr",style:{marginRight:4,fontSize:8}},"OPR"),
+                            h("span",{style:{fontWeight:600}},opr.data.codice)," - ",
+                            (opr.data.nome||"").substring(0,45)
+                          ),
+                          h("span",{style:{color:"#008758",fontSize:9}},"Peso: "+opr.data.peso+"%")
+                        )
+                      )
+                    })
+                  )
+                })
+              )
+            }),
+            // Unlinked STR
+            (function(){
+              var linkedIds={};subs.forEach(function(s){if(s.type==="strategic"&&s.data.ovpRef)linkedIds[s.id]=true});
+              var unlinked=subs.filter(function(s){return s.type==="strategic"&&!s.data.ovpRef});
+              if(!unlinked.length)return null;
+              return h("div",{style:{marginTop:20}},
+                h("div",{style:{fontWeight:700,fontSize:12,color:"#d9364f",marginBottom:8}},"Ob. Strategici NON collegati a OVP ("+unlinked.length+")"),
+                unlinked.map(function(str){
+                  return h("div",{key:str.id,style:{padding:"4px 10px",background:"#fef2f4",borderRadius:3,borderLeft:"3px solid #d9364f",marginBottom:3,fontSize:11}},
+                    h("span",{className:"tag tag-str",style:{marginRight:4}},"STR"),
+                    h("span",{style:{fontWeight:700}},str.data.codice)," - ",str.serviceCode," - ",(str.data.nome||"").substring(0,50)
+                  )
+                })
+              );
             })()
           )
         ):null,

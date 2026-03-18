@@ -196,19 +196,38 @@ window._load = function(){
 // ── Force sync: reload from cloud ──
 window._forceSync = function(){
   if(!window.API_URL){alert("Backend cloud non configurato!\n\nDati locali: "+window._SUBS.length+" schede");return}
+  // Backup PRIMA di qualsiasi operazione
+  try{localStorage.setItem(window.SK+"_presync",JSON.stringify(window._SUBS))}catch(e){}
   window._syncing=true;
   window.dispatchEvent(new Event("syncStatus"));
-  window._cloudGet({action:"load"},function(d){
+  // Raccogli TUTTI i dati locali da ogni fonte possibile
+  var allLocal=[];
+  [window.SK,window.SK+"_backup",window.SK+"_presync","ppo9","ppo8","ppo-v7","ppo-m-v6","ppo-m-v5"].forEach(function(k){
+    try{var d=JSON.parse(localStorage.getItem(k)||"null");if(d&&Array.isArray(d))d.forEach(function(e){if(e&&e.id)allLocal.push(e)})}catch(e){}
+  });
+  window._SUBS.forEach(function(e){if(e&&e.id)allLocal.push(e)});
+  // Carica cloud
+  window._cloudGet({action:"load"},function(cloudData){
     window._syncing=false;window._lastSync=new Date();
-    if(d&&Array.isArray(d)){
-      window._SUBS=d;
-      try{localStorage.setItem(window.SK,JSON.stringify(d));localStorage.setItem(window.SK+"_backup",JSON.stringify(d))}catch(e){}
-      window.dispatchEvent(new Event("subsChanged"));
-      alert("Sincronizzazione completata: "+d.length+" schede dal cloud.");
-    }else{
-      alert("Cloud vuoto o errore. Dati locali: "+window._SUBS.length);
-    }
+    // MERGE: cloud + tutti i locali, per ID, tieni il piu recente
+    var byId={};
+    if(cloudData&&Array.isArray(cloudData))cloudData.forEach(function(e){if(e&&e.id)byId[e.id]=e});
+    allLocal.forEach(function(e){
+      if(!e||!e.id)return;
+      if(!byId[e.id])byId[e.id]=e;
+      else{var ct=byId[e.id].lastModifiedAt||byId[e.id].timestamp||"";var lt=e.lastModifiedAt||e.timestamp||"";if(lt>ct)byId[e.id]=e}
+    });
+    var merged=Object.keys(byId).map(function(k){return byId[k]});
+    window._SUBS=merged;
+    try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
+    // Push al cloud le entry che mancano
+    var cloudIds={};if(cloudData&&Array.isArray(cloudData))cloudData.forEach(function(e){if(e&&e.id)cloudIds[e.id]=true});
+    var toPush=merged.filter(function(e){return!cloudIds[e.id]});
+    if(toPush.length>0){console.log("Pushing "+toPush.length+" to cloud");toPush.forEach(function(e){window._cloudSaveEntry(e)})}
+    window.dispatchEvent(new Event("subsChanged"));
     window.dispatchEvent(new Event("syncStatus"));
+    var cN=cloudData&&Array.isArray(cloudData)?cloudData.length:0;
+    alert("Sync completata!\nCloud: "+cN+"\nLocale: "+allLocal.length+" entries\nRisultato: "+merged.length+" schede\n"+(toPush.length?toPush.length+" caricate nel cloud":"Allineato"));
   });
 };
 
@@ -218,6 +237,45 @@ window._sendEmail = function(name,email,pwd,callback){
   window._cloudGet({action:"sendPassword",name:name,email:email,pwd:pwd},function(d){
     if(callback)callback(d&&d.ok,d&&d.error||"");
   });
+};
+
+// ── RECUPERO EMERGENZA: cerca dati in TUTTE le chiavi localStorage ──
+window._recover = function(){
+  var byId={};
+  var sources=0;
+  // Scan ALL localStorage keys
+  for(var i=0;i<localStorage.length;i++){
+    var k=localStorage.key(i);
+    try{
+      var v=localStorage.getItem(k);
+      if(v&&v.charAt(0)==="["){
+        var arr=JSON.parse(v);
+        if(Array.isArray(arr)&&arr.length>0&&arr[0]&&arr[0].id&&arr[0].serviceCode){
+          sources++;
+          arr.forEach(function(e){
+            if(!e||!e.id)return;
+            if(!byId[e.id])byId[e.id]=e;
+            else{var ct=byId[e.id].lastModifiedAt||byId[e.id].timestamp||"";var lt=e.lastModifiedAt||e.timestamp||"";if(lt>ct)byId[e.id]=e}
+          });
+        }
+      }
+    }catch(e){}
+  }
+  // Also include current in-memory
+  window._SUBS.forEach(function(e){if(e&&e.id&&!byId[e.id])byId[e.id]=e});
+  var all=Object.keys(byId).map(function(k){return byId[k]});
+  console.log("Recovery: found "+all.length+" unique entries from "+sources+" localStorage sources");
+  if(all.length>window._SUBS.length){
+    window._SUBS=all;
+    window._save(all);
+    // Push all to cloud
+    all.forEach(function(e){window._cloudSaveEntry(e)});
+    window.dispatchEvent(new Event("subsChanged"));
+    alert("RECUPERO: trovate "+all.length+" schede (prima: "+window._SUBS.length+").\nTutte caricate nel cloud.");
+  }else{
+    alert("Nessun dato aggiuntivo trovato. Schede attuali: "+all.length);
+  }
+  return all.length;
 };
 
 window._hash = function(str){
@@ -1887,7 +1945,8 @@ function App(){
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
           h("div",null,h("h1",{style:{fontFamily:"Lora,serif",fontSize:18,fontWeight:700}},"Pannello Admin"),h("p",{style:{color:"#5c6f82",fontSize:11}},subs.length+" schede | "+users.length+" utenti registrati")),
           h("div",{style:{display:"flex",gap:4}},
-            h("button",{onClick:function(){window._exportAll()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto")
+            h("button",{onClick:function(){window._exportAll()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto"),
+            h("button",{onClick:function(){window._recover()},style:{padding:"8px 16px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Recupera Dati")
           )
         ),
         h("div",{style:{borderBottom:"1px solid #d9dadb",marginBottom:12,display:"flex",flexWrap:"wrap"}},

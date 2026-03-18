@@ -1,5 +1,6 @@
 <!DOCTYPE html><html lang="it"><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/><meta http-equiv="Pragma" content="no-cache"/><meta http-equiv="Expires" content="0"/>
 <title>Piano Performance 2026-2028 | Regione Molise</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -1156,22 +1157,6 @@ function StrForm(p){
       ),
       priTxt?h("div",{style:{marginTop:6,padding:"6px 10px",background:"#fff3cd",borderRadius:3,fontSize:11,fontWeight:600,color:"#856404"}},"Priorita Regionale: "+priTxt):null
     ),
-    // Collegamento OVP
-    h("div",{className:"cd",style:{padding:12,marginBottom:10,borderLeft:"3px solid #8e44ad"}},
-      h("div",{style:{fontWeight:700,fontSize:12,color:"#8e44ad",marginBottom:6}},"COLLEGAMENTO OBIETTIVO VALORE PUBBLICO"),
-      h(F,{l:"Obiettivo VP di riferimento"},h("select",{style:IS,value:d.ovpRef||"",onChange:u("ovpRef")},
-        h("option",{value:""},"-- Nessun collegamento --"),
-        (window._loadOVP()||[]).map(function(ovp){return h("option",{key:ovp.id,value:ovp.id},ovp.cod+" - "+ovp.nome.substring(0,70))})
-      )),
-      d.ovpRef?(function(){
-        var ovp=null;(window._loadOVP()||[]).forEach(function(o){if(o.id===d.ovpRef)ovp=o});
-        if(!ovp)return null;
-        return h("div",{style:{marginTop:6,padding:8,background:"#f5f0fa",borderRadius:4,fontSize:11}},
-          h("div",{style:{fontWeight:600,color:"#8e44ad",marginBottom:4}},ovp.cod+": "+ovp.nome.substring(0,80)),
-          h("div",{style:{color:"#5c6f82"}},"Indicatori VP: "+ovp.indicatori.map(function(i){return i.nome}).join(", "))
-        );
-      })():null
-    ),
     h(F,{l:"Stakeholders"},h(CG,{o:window.STK,v:d.stakeholders,fn:u("stakeholders"),c:2}),h("input",{style:Object.assign({},IS,{marginTop:4}),value:d.stakeAltro,onChange:u("stakeAltro"),placeholder:"Altro specificare..."})),
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
       h(F,{l:"Deadline"},h("select",{style:IS,value:d.deadlineType,onChange:u("deadlineType")},h("option",{value:""},"-"),h("option",{value:"fine_mandato"},"Entro fine mandato"),h("option",{value:"periodo"},"Anni/Periodo"))),
@@ -1394,10 +1379,26 @@ function Dash(p){
       )
     ),
 
-    // ── TRASVERSALI + STAKEHOLDERS ──
+    // ── OVP DISTRIBUZIONE + STAKEHOLDERS ──
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
       h("div",{className:"cd",style:{padding:12}},
-        sec("Obiettivi Trasversali (Strategici)","#b8860b"),
+        sec("Distribuzione OVP (Strategici)","#8e44ad"),
+        nS?(function(){
+          var ovpCount={};strs.forEach(function(x){if(x.data.ovpRef)ovpCount[x.data.ovpRef]=(ovpCount[x.data.ovpRef]||0)+1});
+          var noOvp=strs.filter(function(x){return!x.data.ovpRef}).length;
+          var ovps2=window._loadOVP()||[];
+          return h("div",null,
+            ovps2.map(function(o){return bar(o.cod+" - "+o.nome.substring(0,30),ovpCount[o.id]||0,nS,"#8e44ad")}),
+            bar("Non collegati",noOvp,nS,"#d9dadb")
+          );
+        })():h("div",{style:{color:"#999",fontSize:11}},"--"),
+        h("div",{style:{marginTop:12}}),
+        sec("Tipo Obiettivo A/B (Strategici)","#0066cc"),
+        nS?h("div",null,
+          bar("Tipo A - TRASVERSALE",tipoA,nS,"#0066cc"),
+          bar("Tipo B - DI POLICY",tipoB,nS,"#008758"),
+          bar("Non specificato",nS-tipoA-tipoB,nS,"#d9dadb")
+        ):null
       ),
       h("div",{className:"cd",style:{padding:12}},
         sec("Stakeholders Coinvolti (Tutti)","#003366"),
@@ -1407,14 +1408,7 @@ function Dash(p){
         nS?window.BES_DOMINI.map(function(b){return bar(b,besDomC[b],nS,"#003366")}):h("div",{style:{color:"#999",fontSize:11}},"--"),
         h("div",{style:{marginTop:12}}),
         sec("Tipo BES (Strategici)","#008758"),
-        nS?window.BES_DOMINI.map(function(b){return bar(b,besDomC2[b],nS,"#008758")}):h("div",{style:{color:"#999",fontSize:11}},"--"),
-        h("div",{style:{marginTop:12}}),
-        sec("Tipo Obiettivo A/B (Strategici)","#0066cc"),
-        nS?h("div",null,
-          bar("Tipo A - TRASVERSALE",tipoA,nS,"#0066cc"),
-          bar("Tipo B - DI POLICY",tipoB,nS,"#008758"),
-          bar("Non specificato",nS-tipoA-tipoB,nS,"#d9dadb")
-        ):null
+        nS?window.BES_DOMINI.map(function(b){return bar(b,besDomC2[b],nS,"#008758")}):h("div",{style:{color:"#999",fontSize:11}},"--")
       )
     ),
 
@@ -1520,10 +1514,12 @@ function Dash(p){
                 h("div",{style:{fontSize:10,fontWeight:600,color:"#0066cc",marginBottom:3}},"Impatto (STR)"),
                 Object.keys(impC).length?Object.keys(impC).map(function(k){return h("div",{key:k,style:{fontSize:9,display:"flex",justifyContent:"space-between",padding:"1px 0"}},h("span",null,k),h("span",{style:{fontWeight:700}},impC[k]))}):h("div",{style:{fontSize:9,color:"#999"}},"--")
               ),
-              // Trasversali
+              // OVP collegati
               h("div",null,
-                h("div",{style:{fontSize:10,fontWeight:600,color:"#b8860b",marginBottom:3}},"Trasversali (STR)"),
-                Object.keys(trvC).length?Object.keys(trvC).map(function(k){return h("div",{key:k,style:{fontSize:9,display:"flex",justifyContent:"space-between",padding:"1px 0"}},h("span",null,k.substring(0,30)),h("span",{style:{fontWeight:700}},trvC[k]))}):h("div",{style:{fontSize:9,color:"#999"}},"--")
+                h("div",{style:{fontSize:10,fontWeight:600,color:"#8e44ad",marginBottom:3}},"OVP Collegati"),
+                (function(){var ovpC={};ad.strs.forEach(function(e){if(e.data.ovpRef)ovpC[e.data.ovpRef]=(ovpC[e.data.ovpRef]||0)+1});
+                  return Object.keys(ovpC).length?Object.keys(ovpC).map(function(k){return h("div",{key:k,style:{fontSize:9,display:"flex",justifyContent:"space-between",padding:"1px 0"}},h("span",null,k),h("span",{style:{fontWeight:700}},ovpC[k]))}):h("div",{style:{fontSize:9,color:"#999"}},"--")
+                })()
               ),
               // Stakeholders
               h("div",null,
@@ -1809,6 +1805,31 @@ function App(){
   var _lp=useState(""),lP=_lp[0],setLP=_lp[1];
   var _le=useState(""),lE=_le[0],setLE=_le[1];
   var _at=useState("dashboard"),aTab=_at[0],setATab=_at[1];
+  var _ovps=useState(function(){return window._loadOVP()}),ovps=_ovps[0],setOvps=_ovps[1];
+  var saveOvps=function(newOvps){setOvps(newOvps);window._saveOVP(newOvps)};
+  var updateOvp=function(ovpId,changes){
+    saveOvps(ovps.map(function(o){return o.id===ovpId?Object.assign({},o,changes):o}));
+  };
+  var addOvp=function(){
+    var n=ovps.length+1;
+    saveOvps(ovps.concat([{id:"OVP"+n,cod:"OVP "+n,nome:"Nuovo Obiettivo VP "+n,indicatori:[],missioni:[]}]));
+  };
+  var removeOvp=function(ovpId){
+    if(!confirm("Eliminare questo OVP e tutte le associazioni?"))return;
+    // Remove ovpRef from linked STR entries
+    var updated=subs.map(function(s){if(s.type==="strategic"&&s.data.ovpRef===ovpId){var nd=Object.assign({},s,{data:Object.assign({},s.data,{ovpRef:""})});return nd}return s});
+    setSubs(updated);window._save(updated);
+    saveOvps(ovps.filter(function(o){return o.id!==ovpId}));
+  };
+  var linkStrToOvp=function(strId,ovpId){
+    var updated=subs.map(function(s){
+      if(s.id===strId){return Object.assign({},s,{data:Object.assign({},s.data,{ovpRef:ovpId})})}return s;
+    });
+    setSubs(updated);window._save(updated);
+    // Cloud save the changed entry
+    var changed=updated.filter(function(s){return s.id===strId})[0];
+    if(changed)window._cloudSaveEntry(changed);
+  };
   // Form state
   var _ft=useState("strategic"),fType=_ft[0],setFType=_ft[1];
   var _fd=useState(null),fData=_fd[0],setFData=_fd[1];
@@ -2403,76 +2424,98 @@ function App(){
 
         // ── TAB OVP (Obiettivi Valore Pubblico) ──
         aTab==="ovp"?h("div",null,
-          h("div",{className:"cd",style:{padding:16}},
-            h("div",{style:{fontWeight:700,fontSize:14,color:"#8e44ad",marginBottom:12,paddingBottom:6,borderBottom:"2px solid #8e44ad"}},"Obiettivi di Valore Pubblico 2026-2028"),
-            h("p",{style:{fontSize:11,color:"#5c6f82",marginBottom:14}},"Gestisci gli OVP e i relativi indicatori. Ogni OVP puo essere collegato a piu obiettivi strategici."),
-            (window._loadOVP()||[]).map(function(ovp){
-              // Count linked STR
-              var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
-              var linkedOprs=subs.filter(function(s){
-                if(s.type!=="operative")return false;
-                var parent=subs.filter(function(p){return p.id===s.parentId})[0];
-                return parent&&parent.data.ovpRef===ovp.id;
-              });
-              return h("div",{key:ovp.id,className:"cd",style:{marginBottom:12,borderLeft:"4px solid #8e44ad",overflow:"hidden"}},
-                h("div",{style:{padding:"12px 14px",background:"#f5f0fa"}},
-                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
-                    h("div",{style:{flex:1}},
-                      h("div",{style:{fontWeight:700,fontSize:14,color:"#8e44ad",marginBottom:4}},ovp.cod),
-                      h("div",{style:{fontSize:12,color:"#17324d"}},ovp.nome)
-                    ),
-                    h("div",{style:{display:"flex",gap:6,flexShrink:0}},
-                      h("span",{className:"tag tag-str"},"STR: "+linkedStrs.length),
-                      h("span",{className:"tag tag-opr"},"OPR: "+linkedOprs.length),
-                      h("span",{style:{fontSize:10,padding:"2px 6px",background:"#8e44ad",color:"#fff",borderRadius:3}},ovp.missioni.map(function(m){return"M"+m}).join(", "))
-                    )
-                  )
-                ),
-                // Indicatori
-                h("div",{style:{padding:"10px 14px"}},
-                  h("div",{style:{fontWeight:600,fontSize:11,color:"#5c6f82",marginBottom:6}},"Indicatori ("+ovp.indicatori.length+")"),
-                  h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:10}},
-                    h("thead",null,h("tr",null,
-                      ["Indicatore","Formula","Fonte","Baseline","Target 2026","Target 2027","Target 2028","Tipo","BES/PNRR"].map(function(hd,i){
-                        return h("th",{key:i,style:{padding:"4px 6px",background:"#8e44ad",color:"#fff",textAlign:"left",fontSize:9}},hd)
-                      })
-                    )),
-                    h("tbody",null,ovp.indicatori.map(function(ind,ii){
-                      return h("tr",{key:ii,style:{background:ii%2?"#fafafa":"#fff"}},
-                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontWeight:600}},ind.nome),
-                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontSize:9}},ind.formula||"-"),
-                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.fonte||"-"),
-                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.baseline||"-"),
-                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontWeight:600,color:"#0066cc"}},ind.t1||"-"),
-                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.t2||"-"),
-                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.t3||"-"),
-                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},ind.tipo||"-"),
-                        h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontSize:9}},ind.bes||"-")
-                      )
-                    }))
+          h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+            h("div",{style:{fontWeight:700,fontSize:14,color:"#8e44ad"}},"Obiettivi di Valore Pubblico 2026-2028"),
+            h("button",{onClick:addOvp,style:{padding:"6px 14px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:11,cursor:"pointer"}},"+  Aggiungi OVP")
+          ),
+          // Each OVP card
+          ovps.map(function(ovp,oi){
+            var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
+            var unlinkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef!==ovp.id});
+            return h("div",{key:ovp.id,className:"cd",style:{marginBottom:14,borderLeft:"4px solid #8e44ad",overflow:"hidden"}},
+              // Header
+              h("div",{style:{padding:"10px 14px",background:"#f5f0fa",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
+                h("div",{style:{flex:1,marginRight:10}},
+                  h("div",{style:{display:"flex",gap:6,alignItems:"center",marginBottom:6}},
+                    h("input",{style:{fontWeight:700,fontSize:14,color:"#8e44ad",border:"none",background:"transparent",width:70},value:ovp.cod,onChange:function(e){updateOvp(ovp.id,{cod:e.target.value})}}),
+                    h("span",{className:"tag tag-str"},"STR: "+linkedStrs.length)
                   ),
-                  // Linked STR
-                  linkedStrs.length>0?h("div",{style:{marginTop:8}},
-                    h("div",{style:{fontWeight:600,fontSize:10,color:"#0066cc",marginBottom:4}},"Obiettivi Strategici collegati:"),
-                    linkedStrs.map(function(s){
-                      var myOprs=subs.filter(function(o){return o.type==="operative"&&o.parentId===s.id});
-                      return h("div",{key:s.id,style:{padding:"4px 8px",marginBottom:3,background:"#e8f0fe",borderRadius:3,fontSize:11}},
-                        h("span",{style:{fontWeight:700}},s.data.codice)," - ",s.serviceName," - ",s.data.nome.substring(0,50),
-                        myOprs.length?h("span",{style:{color:"#008758",marginLeft:6}}," ("+myOprs.length+" OPR)"):null
-                      )
+                  h("textarea",{style:{width:"100%",padding:6,border:"1px solid #d9dadb",borderRadius:3,fontSize:11,minHeight:36,fontFamily:"inherit",resize:"vertical"},value:ovp.nome,onChange:function(e){updateOvp(ovp.id,{nome:e.target.value})}})
+                ),
+                h("button",{onClick:function(){removeOvp(ovp.id)},style:{padding:"4px 8px",background:"#d9364f",color:"#fff",border:"none",borderRadius:3,fontSize:10,cursor:"pointer"}},"Elimina")
+              ),
+              // Indicatori
+              h("div",{style:{padding:"10px 14px"}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+                  h("div",{style:{fontWeight:600,fontSize:11,color:"#5c6f82"}},"Indicatori ("+ovp.indicatori.length+")"),
+                  h("button",{onClick:function(){
+                    var ni=ovp.indicatori.concat([{nome:"",formula:"",fonte:"",baseline:"",t1:"",t2:"",t3:"",tipo:"Output",bes:""}]);
+                    updateOvp(ovp.id,{indicatori:ni});
+                  },style:{padding:"2px 8px",fontSize:9,background:"#8e44ad",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"+ Indicatore")
+                ),
+                h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:10}},
+                  h("thead",null,h("tr",null,
+                    ["Indicatore","Formula","Fonte","Baseline","T 2026","T 2027","T 2028","Tipo","BES/PNRR",""].map(function(hd,i){
+                      return h("th",{key:i,style:{padding:"3px 4px",background:"#8e44ad",color:"#fff",textAlign:"left",fontSize:8}},hd)
                     })
-                  ):h("div",{style:{marginTop:6,fontSize:10,color:"#999",fontStyle:"italic"}},"Nessun ob. strategico collegato a questo OVP")
+                  )),
+                  h("tbody",null,ovp.indicatori.map(function(ind,ii){
+                    var uInd=function(field,val){
+                      var ni=ovp.indicatori.map(function(x,xi){if(xi===ii){var n=Object.assign({},x);n[field]=val;return n}return x});
+                      updateOvp(ovp.id,{indicatori:ni});
+                    };
+                    var iStyle={width:"100%",padding:"2px 3px",border:"1px solid #e8ecf1",borderRadius:2,fontSize:9,fontFamily:"inherit"};
+                    return h("tr",{key:ii,style:{background:ii%2?"#fafafa":"#fff"}},
+                      h("td",{style:{padding:2}},h("input",{style:Object.assign({},iStyle,{fontWeight:600}),value:ind.nome,onChange:function(e){uInd("nome",e.target.value)}})),
+                      h("td",{style:{padding:2}},h("input",{style:iStyle,value:ind.formula||"",onChange:function(e){uInd("formula",e.target.value)}})),
+                      h("td",{style:{padding:2}},h("input",{style:Object.assign({},iStyle,{width:60}),value:ind.fonte||"",onChange:function(e){uInd("fonte",e.target.value)}})),
+                      h("td",{style:{padding:2}},h("input",{style:Object.assign({},iStyle,{width:50}),value:ind.baseline||"",onChange:function(e){uInd("baseline",e.target.value)}})),
+                      h("td",{style:{padding:2}},h("input",{style:Object.assign({},iStyle,{width:40,fontWeight:600,color:"#0066cc"}),value:ind.t1||"",onChange:function(e){uInd("t1",e.target.value)}})),
+                      h("td",{style:{padding:2}},h("input",{style:Object.assign({},iStyle,{width:40}),value:ind.t2||"",onChange:function(e){uInd("t2",e.target.value)}})),
+                      h("td",{style:{padding:2}},h("input",{style:Object.assign({},iStyle,{width:40}),value:ind.t3||"",onChange:function(e){uInd("t3",e.target.value)}})),
+                      h("td",{style:{padding:2}},h("select",{style:Object.assign({},iStyle,{width:60}),value:ind.tipo||"",onChange:function(e){uInd("tipo",e.target.value)}},h("option",{value:"Output"},"Output"),h("option",{value:"Outcome"},"Outcome"))),
+                      h("td",{style:{padding:2}},h("input",{style:Object.assign({},iStyle,{width:80}),value:ind.bes||"",onChange:function(e){uInd("bes",e.target.value)}})),
+                      h("td",{style:{padding:2}},h("button",{onClick:function(){
+                        var ni=ovp.indicatori.filter(function(x,xi){return xi!==ii});
+                        updateOvp(ovp.id,{indicatori:ni});
+                      },style:{background:"#d9364f",color:"#fff",border:"none",borderRadius:2,cursor:"pointer",fontSize:8,padding:"2px 4px"}},"X"))
+                    )
+                  }))
                 )
+              ),
+              // ── ASSOCIAZIONE STR ──
+              h("div",{style:{padding:"10px 14px",borderTop:"1px solid #e8ecf1",background:"#fafafa"}},
+                h("div",{style:{fontWeight:600,fontSize:11,color:"#8e44ad",marginBottom:6}},"Associa Obiettivi Strategici a questo OVP"),
+                // Currently linked
+                linkedStrs.length?h("div",{style:{marginBottom:8}},
+                  linkedStrs.map(function(s){
+                    return h("div",{key:s.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:"#e8f0fe",borderRadius:3,marginBottom:3,fontSize:11}},
+                      h("span",null,h("b",null,s.data.codice)," — ",s.serviceName," — ",(s.data.nome||"").substring(0,45)),
+                      h("button",{onClick:function(){linkStrToOvp(s.id,"")},style:{padding:"2px 8px",fontSize:9,background:"#d9364f",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"Rimuovi")
+                    )
+                  })
+                ):null,
+                // Add new link
+                unlinkedStrs.length?h("div",{style:{display:"flex",gap:6}},
+                  h("select",{id:"ovp_link_"+ovp.id,style:{flex:1,padding:4,fontSize:10,border:"1px solid #d9dadb",borderRadius:3}},
+                    h("option",{value:""},"-- Seleziona ob. strategico da collegare --"),
+                    unlinkedStrs.map(function(s){return h("option",{key:s.id,value:s.id},s.data.codice+" — "+s.serviceName+" — "+(s.data.nome||"").substring(0,40))})
+                  ),
+                  h("button",{onClick:function(){
+                    var sel=document.getElementById("ovp_link_"+ovp.id);
+                    if(sel&&sel.value)linkStrToOvp(sel.value,ovp.id);
+                  },style:{padding:"4px 12px",fontSize:10,background:"#8e44ad",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600}},"Collega")
+                ):h("div",{style:{fontSize:10,color:"#999"}},"Tutti gli ob. strategici sono gia collegati")
               )
-            })
-          )
+            )
+          })
         ):null,
 
         // ── TAB ALBERATURA ──
         aTab==="tree"?h("div",null,
           h("div",{className:"cd",style:{padding:16}},
             h("div",{style:{fontWeight:700,fontSize:14,color:"#003366",marginBottom:12,paddingBottom:6,borderBottom:"2px solid #003366"}},"Alberatura Collegamenti OVP > STR > OPR"),
-            (window._loadOVP()||[]).map(function(ovp){
+            ovps.map(function(ovp){
               var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
               if(!linkedStrs.length)return null;
               return h("div",{key:ovp.id,style:{marginBottom:16}},

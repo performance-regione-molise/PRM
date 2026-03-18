@@ -493,8 +493,9 @@ window.sumWeights = function(entries){var t=0;entries.forEach(function(e){t+=par
 // ════════════════════════════════════════════════
 // PDF GENERATION
 // ════════════════════════════════════════════════
-window._mkPDF = function(en){
-  var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+window._mkPDF = function(en,targetDoc){
+  var doc=targetDoc||new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  if(targetDoc)doc.addPage("a4","landscape");
   var W=297,H=210,mx=5,mxR=W-5,cW=mxR-mx;
   var d=en.data,area=en.areaName,sN=en.serviceName,sC=en.serviceCode;
   var ck=function(a,v){return(a||[]).indexOf(v)>=0?"[X]":"[ ]"};
@@ -989,17 +990,24 @@ window._exportPacchetto=function(){
   });
   XLSX.writeFile(wb,"Pacchetto_Performance_"+new Date().toISOString().slice(0,10)+".xlsx");
   
-  // 2. Genera tutti i PDF in sequenza
-  alert("Excel pacchetto scaricato!\n\nOra verranno generati "+sorted.length+" PDF...\n(Uno ogni 500ms per non sovraccaricare il browser)");
-  var idx=0;
-  var genNext=function(){
-    if(idx>=sorted.length)return;
-    try{window._mkPDF(sorted[idx])}catch(e){console.error(e)}
-    idx++;
-    if(idx<sorted.length)setTimeout(genNext,500);
-    else alert("Generazione completata: "+sorted.length+" PDF scaricati");
-  };
-  setTimeout(genNext,1000);
+  // 2. Genera un unico PDF con tutte le schede in sequenza
+  try{
+    var pdfDoc=null;
+    sorted.forEach(function(entry){
+      pdfDoc=window._mkPDF(entry,pdfDoc);
+    });
+    if(pdfDoc){
+      // Remove first blank page (addPage adds one extra at start)
+      if(pdfDoc.getNumberOfPages()>sorted.length){
+        pdfDoc.deletePage(1);
+      }
+      pdfDoc.save("Pacchetto_PDF_Performance_"+new Date().toISOString().slice(0,10)+".pdf");
+      alert("Esportazione completata!\n\n- 1 Excel multi-foglio\n- 1 PDF unico con "+sorted.length+" schede");
+    }
+  }catch(e){
+    console.error("Errore generazione PDF unico:",e);
+    alert("Errore PDF: "+e.message);
+  }
 };
 
 // Excel export for indicator dashboards
@@ -1126,7 +1134,7 @@ function StrForm(p){
   var priTxt="";window.PRIORITA.forEach(function(pr){if(pr.mis===d.missione)priTxt=pr.txt});
   return h("div",null,
     h("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:10}},
-      h(F,{l:"Codice Obiettivo Strategico"},h("input",{style:Object.assign({},IS,{background:"#f0f4fa",fontWeight:700}),value:d.codice,onChange:u("codice")})),
+      h(F,{l:"Codice Obiettivo Strategico"},h("input",{style:Object.assign({},IS,{background:"#e8ecf1",fontWeight:700,cursor:"not-allowed"}),value:d.codice,readOnly:true})),
       h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",min:1,max:100,value:d.peso,onChange:u("peso")})),
       h(F,{l:"Tipo Obiettivo",r:1},h("select",{style:IS,value:d.tipoAB||"",onChange:function(e){
         var v=e.target.value;var n=Object.assign({},d);n.tipoAB=v;
@@ -1197,7 +1205,7 @@ function OprForm(p){
   var d=p.d,u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
   return h("div",null,
     h("div",{style:{display:"grid",gridTemplateColumns:"3fr 1fr",gap:10}},
-      h(F,{l:"Codice Obiettivo Operativo"},h("input",{style:Object.assign({},IS,{background:"#f0f4fa",fontWeight:700}),value:d.codice,onChange:u("codice")})),
+      h(F,{l:"Codice Obiettivo Operativo"},h("input",{style:Object.assign({},IS,{background:"#e8ecf1",fontWeight:700,cursor:"not-allowed"}),value:d.codice,readOnly:true})),
       h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",min:1,value:d.peso,onChange:u("peso")}))
     ),
     h(F,{l:"Obiettivo Operativo (NOME/DESCRIZIONE)",r:1},h("textarea",{style:TS,value:d.nome,onChange:u("nome")})),
@@ -1253,6 +1261,10 @@ function Dash(p){
   var strs=s.filter(function(x){return x.type==="strategic"});
   var oprs=s.filter(function(x){return x.type==="operative"});
   var nS=strs.length,nO=oprs.length;
+  // Filtri dashboard
+  var _sf=useState(""),searchFilt=_sf[0],setSearchFilt=_sf[1];
+  var _df=useState(""),dimFilt=_df[0],setDimFilt=_df[1];
+  var _mf=useState(""),misFilt=_mf[0],setMisFilt=_mf[1];
 
   // Aggregazioni
   var ac={};s.forEach(function(x){ac[x.areaCode]=(ac[x.areaCode]||0)+1});
@@ -1775,6 +1787,87 @@ function Dash(p){
             })())
           )
         );
+      })()
+    ),
+
+    // ── TABELLA INDICATORI FILTRABILI ──
+    h("div",{className:"cd",style:{padding:12,marginBottom:12}},
+      sec("Indicatori — Ricerca e Filtri"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:8,marginBottom:10}},
+        h("div",null,
+          h("div",{style:{fontSize:10,fontWeight:600,marginBottom:2}},"Ricerca testo libero (colonna Indicatore)"),
+          h("input",{style:Object.assign({},IS,{fontSize:11}),value:searchFilt,onChange:function(e){setSearchFilt(e.target.value)},placeholder:"Cerca indicatore..."})
+        ),
+        h("div",null,
+          h("div",{style:{fontSize:10,fontWeight:600,marginBottom:2}},"Dimensione Valore Pubblico"),
+          h("select",{style:IS,value:dimFilt,onChange:function(e){setDimFilt(e.target.value)}},
+            h("option",{value:""},"-- Tutte --"),
+            h("option",{value:"EFFICACIA"},"EFFICACIA"),
+            h("option",{value:"EFFICIENZA"},"EFFICIENZA"),
+            h("option",{value:"SALUTE"},"SALUTE DELLE RISORSE"),
+            h("option",{value:"IMPATTO"},"IMPATTO (STR)")
+          )
+        ),
+        h("div",null,
+          h("div",{style:{fontSize:10,fontWeight:600,marginBottom:2}},"Missione"),
+          h("select",{style:IS,value:misFilt,onChange:function(e){setMisFilt(e.target.value)}},
+            h("option",{value:""},"-- Tutte --"),
+            window.MISSIONI.map(function(m){return h("option",{key:m.cod,value:m.cod},"M"+m.cod+" - "+m.nome.substring(0,35))})
+          )
+        )
+      ),
+      // Conteggio
+      (function(){
+        var rows=[];
+        s.forEach(function(e){
+          var d=e.data;
+          if(!d.indicatore)return;
+          // Determine dimension
+          var dim="";
+          if(e.type==="strategic"&&d.impatto&&d.impatto.length)dim="IMPATTO";
+          if(e.type==="operative"&&d.natura){
+            if(d.natura.indexOf("EFFICACIA")>=0)dim="EFFICACIA";
+            else if(d.natura.indexOf("EFFICIENZA")>=0)dim="EFFICIENZA";
+            else if(d.natura.indexOf("SALUTE")>=0)dim="SALUTE";
+          }
+          // Apply filters
+          if(searchFilt&&d.indicatore.toLowerCase().indexOf(searchFilt.toLowerCase())<0)return;
+          if(dimFilt&&dim.indexOf(dimFilt)<0)return;
+          if(misFilt&&e.type==="strategic"&&d.missione!==misFilt)return;
+          if(misFilt&&e.type==="operative"){
+            // Find parent STR missione
+            var parent=s.filter(function(p){return p.id===e.parentId})[0];
+            if(parent&&parent.data.missione!==misFilt)return;
+            if(!parent&&misFilt)return;
+          }
+          rows.push({e:e,d:d,dim:dim});
+        });
+        return h("div",null,
+          h("div",{style:{fontSize:12,fontWeight:700,color:"#0066cc",marginBottom:6}},rows.length+" Indicatori"),
+          h("div",{style:{maxHeight:350,overflowY:"auto"}},
+            h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:9}},
+              h("thead",null,h("tr",null,
+                ["Indicatore","Descrizione Indicatore","Dimensione VP","Missione","Programma","Fonte","Servizio","Tipo"].map(function(hd,i){
+                  return h("th",{key:i,style:{padding:"4px 6px",background:"#003366",color:"#fff",textAlign:"left",fontSize:8,position:"sticky",top:0}},hd)
+                })
+              )),
+              h("tbody",null,rows.map(function(r,ri){
+                var misNome="";if(r.e.type==="strategic")window.MISSIONI.forEach(function(m){if(m.cod===r.d.missione)misNome=m.cod+" - "+m.nome.substring(0,25)});
+                var proNome="";if(r.e.type==="strategic")window.PROGRAMMI.forEach(function(p){if(p.id===r.d.programma)proNome=p.id+" - "+p.nome.substring(0,25)});
+                return h("tr",{key:ri,style:{background:ri%2?"#fafafa":"#fff"}},
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontWeight:600,color:"#003366"}},r.d.indicatore),
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee",fontSize:8}},(r.d.formula||r.d.nome||"").substring(0,50)),
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},r.dim||"-"),
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},misNome||"-"),
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},proNome||"-"),
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},r.d.fonte||"-"),
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},r.e.serviceCode),
+                  h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #eee"}},r.e.type==="strategic"?"STR":"OPR")
+                )
+              }))
+            )
+          )
+        )
       })()
     ),
 

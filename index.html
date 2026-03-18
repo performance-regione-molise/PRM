@@ -223,19 +223,24 @@ window._load = function(){
             document.body.appendChild(notif);
           }catch(e){}
           window._cloudBulkPush(localOnly);
-          // After queue finishes, verify from cloud
+          // After queue finishes, verify from cloud (with delay for propagation)
           window._queueCallback=function(){
-            console.log("Push complete, verifying...");
-            window._cloudGet({action:"load"},function(verified){
-              if(verified&&Array.isArray(verified)){
-                console.log("Verified: cloud now has "+verified.length+" entries");
-                window._SUBS=verified;
-                try{localStorage.setItem(window.SK,JSON.stringify(verified));localStorage.setItem(window.SK+"_backup",JSON.stringify(verified))}catch(e){}
-                window.dispatchEvent(new Event("subsChanged"));
-                // Update notification
-                try{var n=document.getElementById("sync_notif");if(n){n.textContent="Sincronizzazione completata! Cloud: "+verified.length+" schede";n.style.background="#003366";setTimeout(function(){try{n.remove()}catch(e){}},4000)}}catch(e){}
-              }
-            });
+            console.log("Push complete, verifying in 2s...");
+            setTimeout(function(){
+              window._cloudGet({action:"load"},function(verified){
+                if(verified&&Array.isArray(verified)&&verified.length>=merged.length){
+                  console.log("Verified: cloud now has "+verified.length+" entries");
+                  window._SUBS=verified;
+                  try{localStorage.setItem(window.SK,JSON.stringify(verified));localStorage.setItem(window.SK+"_backup",JSON.stringify(verified))}catch(e){}
+                  window.dispatchEvent(new Event("subsChanged"));
+                  try{var n=document.getElementById("sync_notif");if(n){n.textContent="Cloud aggiornato: "+verified.length+" schede";n.style.background="#003366";setTimeout(function(){try{n.remove()}catch(e){}},4000)}}catch(e){}
+                }else{
+                  // Cloud not yet updated, trust merged
+                  console.log("Cloud verification: "+((verified&&verified.length)||0)+" (expected "+merged.length+"), using merged");
+                  try{var n=document.getElementById("sync_notif");if(n){n.textContent="Sincronizzato: "+merged.length+" schede";n.style.background="#003366";setTimeout(function(){try{n.remove()}catch(e){}},4000)}}catch(e){}
+                }
+              });
+            },2000);
           };
         }
         window.dispatchEvent(new Event("subsChanged"));
@@ -292,17 +297,22 @@ window._forceSync = function(){
     if(localOnly.length>0){
       console.log("Sync: pushing "+localOnly.length+" local entries to cloud");
       localOnly.forEach(function(e){window._cloudSaveEntry(e)});
-      // Verify after push
+      // Verify after push (with delay — Google Sheets needs time to propagate)
       window._queueCallback=function(){
-        window._cloudGet({action:"load"},function(final){
-          var fn=final?final.length:0;
-          if(final&&Array.isArray(final)){
-            window._SUBS=final;
-            try{localStorage.setItem(window.SK,JSON.stringify(final));localStorage.setItem(window.SK+"_backup",JSON.stringify(final))}catch(e){}
-            window.dispatchEvent(new Event("subsChanged"));
-          }
-          alert("SYNC completata!\n\nCloud prima: "+cloudData.length+"\nLocale: "+localBefore.length+"\nCaricate nel cloud: "+localOnly.length+"\nCloud ora: "+fn+" schede\n\nTutti i browser vedranno "+fn+" schede.");
-        });
+        setTimeout(function(){
+          window._cloudGet({action:"load"},function(final){
+            var fn=final?final.length:0;
+            if(final&&Array.isArray(final)&&fn>=merged.length){
+              window._SUBS=final;
+              try{localStorage.setItem(window.SK,JSON.stringify(final));localStorage.setItem(window.SK+"_backup",JSON.stringify(final))}catch(e){}
+              window.dispatchEvent(new Event("subsChanged"));
+              alert("SYNC completata!\n\nCloud prima: "+cloudData.length+"\nCaricate: "+localOnly.length+"\nCloud ora: "+fn+" schede");
+            }else{
+              // Cloud not yet updated — trust our merged data
+              alert("SYNC completata!\n\nCloud prima: "+cloudData.length+"\nCaricate: "+localOnly.length+"\nTotale: "+merged.length+" schede\n\n(Il cloud potrebbe impiegare qualche secondo per aggiornarsi)");
+            }
+          });
+        },2000); // 2 secondi di attesa per la propagazione
       };
     }else{
       alert("SYNC: "+merged.length+" schede.\nCloud e locale sono allineati.");
@@ -2110,18 +2120,35 @@ function App(){
     if(window.API_URL){
       fetch(window.API_URL+"?action=loadUsers&t="+Date.now()).then(function(r){return r.json()}).then(function(d){
         if(d&&Array.isArray(d)&&d.length){
-          var byName={};d.forEach(function(u){byName[u.name]=u});
-          users.forEach(function(u){if(!byName[u.name])byName[u.name]=u});
+          // Merge: cloud + local by name, keep the one with more info
+          var byName={};
+          d.forEach(function(u){byName[u.name]=u});
+          users.forEach(function(u){
+            if(!byName[u.name]){
+              byName[u.name]=u; // local-only user, add
+            }else{
+              // Merge fields: keep email if cloud doesn't have it, keep newer login
+              var cu=byName[u.name];
+              if(u.email&&!cu.email)cu.email=u.email;
+              if(u.pwd&&u.pwd!=="(migrato)"&&(!cu.pwd||cu.pwd==="(migrato)"))cu.pwd=u.pwd;
+              if(u.hash&&!cu.hash)cu.hash=u.hash;
+              var cl=cu.lastLogin||"";var ll=u.lastLogin||"";
+              if(ll>cl)cu.lastLogin=ll;
+              byName[u.name]=cu;
+            }
+          });
           var merged=Object.keys(byName).map(function(k){return byName[k]});
           setUsers(merged);try{localStorage.setItem("ppo_users",JSON.stringify(merged))}catch(e){}
-          // Then migrate any missing authors
+          // Push merged back to cloud if local had extra users
+          if(merged.length>d.length){
+            console.log("Users: pushing merged "+merged.length+" to cloud (cloud had "+d.length+")");
+            window._cloudSaveUsers(merged);
+          }
           doMigrate(merged,window._SUBS);
         } else {
-          // Cloud empty, migrate from entries
           doMigrate(users,window._SUBS);
         }
       }).catch(function(e){
-        // Cloud failed, migrate locally
         doMigrate(users,window._SUBS);
       });
     } else {

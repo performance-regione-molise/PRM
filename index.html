@@ -62,7 +62,13 @@ window._cloudGet = function(params,callback){
 // ── Coda di salvataggio: processa una operazione alla volta ──
 window._queueCallback = null; // called when queue empties
 window._processQueue = function(){
-  if(window._saving||!window._saveQueue.length)return;
+  if(window._saving||!window._saveQueue.length){
+    // Queue empty or busy — if empty and callback pending, call it
+    if(!window._saveQueue.length&&!window._saving&&window._queueCallback){
+      var cb=window._queueCallback;window._queueCallback=null;setTimeout(cb,500);
+    }
+    return;
+  }
   window._saving=true;
   var op=window._saveQueue.shift();
   op.retries=(op.retries||0)+1;
@@ -79,7 +85,12 @@ window._processQueue = function(){
       }
     }
     if(window._saveQueue.length)setTimeout(window._processQueue,600);
-    else{window._syncing=false;window.dispatchEvent(new Event("syncStatus"))}
+    else{
+      window._syncing=false;
+      window.dispatchEvent(new Event("syncStatus"));
+      // Call callback when queue is fully drained (used by _load to verify push)
+      if(window._queueCallback){var cb=window._queueCallback;window._queueCallback=null;setTimeout(cb,500)}
+    }
   });
 };
 
@@ -203,6 +214,14 @@ window._load = function(){
         // Push local-only or newer entries to cloud, then VERIFY
         if(localOnly.length>0){
           console.log("Pushing "+localOnly.length+" local entries to cloud...");
+          // Notify user
+          try{
+            var notif=document.createElement("div");
+            notif.id="sync_notif";
+            notif.style.cssText="position:fixed;top:60px;right:10px;background:#008758;color:#fff;padding:12px 20px;border-radius:6px;z-index:99999;font-size:12px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+            notif.textContent="Caricamento "+localOnly.length+" schede locali nel cloud...";
+            document.body.appendChild(notif);
+          }catch(e){}
           window._cloudBulkPush(localOnly);
           // After queue finishes, verify from cloud
           window._queueCallback=function(){
@@ -210,11 +229,11 @@ window._load = function(){
             window._cloudGet({action:"load"},function(verified){
               if(verified&&Array.isArray(verified)){
                 console.log("Verified: cloud now has "+verified.length+" entries");
-                if(verified.length>merged.length){
-                  window._SUBS=verified;
-                  try{localStorage.setItem(window.SK,JSON.stringify(verified));localStorage.setItem(window.SK+"_backup",JSON.stringify(verified))}catch(e){}
-                  window.dispatchEvent(new Event("subsChanged"));
-                }
+                window._SUBS=verified;
+                try{localStorage.setItem(window.SK,JSON.stringify(verified));localStorage.setItem(window.SK+"_backup",JSON.stringify(verified))}catch(e){}
+                window.dispatchEvent(new Event("subsChanged"));
+                // Update notification
+                try{var n=document.getElementById("sync_notif");if(n){n.textContent="Sincronizzazione completata! Cloud: "+verified.length+" schede";n.style.background="#003366";setTimeout(function(){try{n.remove()}catch(e){}},4000)}}catch(e){}
               }
             });
           };
@@ -1127,14 +1146,14 @@ function PwdCell(p){
 // ═══ STRATEGIC FORM ═══
 // ═══ STRATEGIC FORM ═══
 function StrForm(p){
-  var d=p.d,u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
+  var d=p.d,svc=p.svc,u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
   // Programmi filtrati per missione selezionata
   var filtProg=d.missione?window.PROGRAMMI.filter(function(pr){return pr.mis===d.missione}):[];
   // Priorita per missione
   var priTxt="";window.PRIORITA.forEach(function(pr){if(pr.mis===d.missione)priTxt=pr.txt});
   return h("div",null,
     h("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:10}},
-      h(F,{l:"Codice Obiettivo Strategico"},h("input",{style:Object.assign({},IS,{background:"#e8ecf1",fontWeight:700,cursor:"not-allowed"}),value:d.codice,readOnly:true})),
+      h(F,{l:"Codice Obiettivo Strategico (auto)"},h("div",{style:{display:"flex",gap:0}},h("span",{style:{padding:"6px 8px",background:"#003366",color:"#fff",fontSize:11,fontWeight:700,borderRadius:"4px 0 0 4px",whiteSpace:"nowrap"}},"ObSTR."),h("input",{style:Object.assign({},IS,{borderRadius:"0 4px 4px 0",fontWeight:700,flex:1}),value:(d.codice||"").replace(/^ObSTR\.?/,""),onChange:function(e){var n=Object.assign({},d);n.codice="ObSTR."+e.target.value;p.s(n)},placeholder:svc?svc.code+".1":"servizio.N"}))),
       h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",min:1,max:100,value:d.peso,onChange:u("peso")})),
       h(F,{l:"Tipo Obiettivo",r:1},h("select",{style:IS,value:d.tipoAB||"",onChange:function(e){
         var v=e.target.value;var n=Object.assign({},d);n.tipoAB=v;
@@ -1202,10 +1221,10 @@ function StrForm(p){
 
 // ═══ OPERATIVE FORM ═══
 function OprForm(p){
-  var d=p.d,u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
+  var d=p.d,svc=p.svc,u=function(k){return function(e){var n=Object.assign({},d);n[k]=e&&e.target?e.target.value:e;p.s(n)}};
   return h("div",null,
     h("div",{style:{display:"grid",gridTemplateColumns:"3fr 1fr",gap:10}},
-      h(F,{l:"Codice Obiettivo Operativo"},h("input",{style:Object.assign({},IS,{background:"#e8ecf1",fontWeight:700,cursor:"not-allowed"}),value:d.codice,readOnly:true})),
+      h(F,{l:"Codice Obiettivo Operativo (auto)"},h("div",{style:{display:"flex",gap:0}},h("span",{style:{padding:"6px 8px",background:"#008758",color:"#fff",fontSize:11,fontWeight:700,borderRadius:"4px 0 0 4px",whiteSpace:"nowrap"}},"ObOP."),h("input",{style:Object.assign({},IS,{borderRadius:"0 4px 4px 0",fontWeight:700,flex:1}),value:(d.codice||"").replace(/^ObOP\.?/,""),onChange:function(e){var n=Object.assign({},d);n.codice="ObOP."+e.target.value;p.s(n)},placeholder:svc?svc.code+".1":"servizio.N"}))),
       h(F,{l:"Peso %",r:1},h("input",{style:IS,type:"number",min:1,value:d.peso,onChange:u("peso")}))
     ),
     h(F,{l:"Obiettivo Operativo (NOME/DESCRIZIONE)",r:1},h("textarea",{style:TS,value:d.nome,onChange:u("nome")})),
@@ -1256,6 +1275,24 @@ function OprForm(p){
 
 
 // ═══ DASHBOARD BI COMPLETA ═══
+// Pie Chart component using Chart.js
+function PieChart(p){
+  var ref=useRef(null),chartRef=useRef(null);
+  useEffect(function(){
+    if(!ref.current||!window.Chart)return;
+    if(chartRef.current)chartRef.current.destroy();
+    var colors=["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#2ecc71","#e74c3c","#9b59b6","#f39c12","#1abc9c","#e91e63","#3f51b5","#ff9800","#795548","#607d8b","#00bcd4","#cddc39","#ff5722","#4caf50","#9c27b0","#ff6f00","#6200ea"];
+    var labels=p.labels||[];var values=p.values||[];
+    chartRef.current=new window.Chart(ref.current,{
+      type:"pie",
+      data:{labels:labels,datasets:[{data:values,backgroundColor:colors.slice(0,labels.length),borderWidth:1}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{font:{size:9},padding:6}},title:{display:!!p.title,text:p.title||"",font:{size:11,weight:"bold"},color:"#003366"}}}
+    });
+    return function(){if(chartRef.current)chartRef.current.destroy()};
+  },[p.labels,p.values,p.title]);
+  return h("canvas",{ref:ref,style:{maxHeight:220}});
+}
+
 function Dash(p){
   var s=p.subs;
   var strs=s.filter(function(x){return x.type==="strategic"});
@@ -1844,6 +1881,31 @@ function Dash(p){
         });
         return h("div",null,
           h("div",{style:{fontSize:12,fontWeight:700,color:"#0066cc",marginBottom:6}},rows.length+" Indicatori"),
+          // Grafici interattivi
+          h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
+            h("div",{style:{height:230,padding:8,background:"#fafafa",borderRadius:4}},
+              (function(){
+                var dimCount={};rows.forEach(function(r){var k=r.dim||"Altro";dimCount[k]=(dimCount[k]||0)+1});
+                return h(PieChart,{title:"Indicatori per Dimensione Valore Pubblico",labels:Object.keys(dimCount),values:Object.keys(dimCount).map(function(k){return dimCount[k]})});
+              })()
+            ),
+            h("div",{style:{height:230,padding:8,background:"#fafafa",borderRadius:4}},
+              (function(){
+                var misCount={};rows.forEach(function(r){
+                  var mis="";
+                  if(r.e.type==="strategic"&&r.d.missione){
+                    window.MISSIONI.forEach(function(m){if(m.cod===r.d.missione)mis=m.cod+" - "+m.nome.substring(0,20)});
+                  }else{
+                    var parent=s.filter(function(p){return p.id===r.e.parentId})[0];
+                    if(parent&&parent.data.missione)window.MISSIONI.forEach(function(m){if(m.cod===parent.data.missione)mis=m.cod+" - "+m.nome.substring(0,20)});
+                  }
+                  if(!mis)mis="N/D";
+                  misCount[mis]=(misCount[mis]||0)+1;
+                });
+                return h(PieChart,{title:"Indicatori per Missioni di bilancio",labels:Object.keys(misCount),values:Object.keys(misCount).map(function(k){return misCount[k]})});
+              })()
+            )
+          ),
           h("div",{style:{maxHeight:350,overflowY:"auto"}},
             h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:9}},
               h("thead",null,h("tr",null,
@@ -2123,7 +2185,9 @@ function App(){
 
   // Save form
   var saveForm=function(){
-    if(!fData||!fData.codice||!fData.nome){flash("Compila Codice e Descrizione","err");return}
+    if(!fData||!fData.nome){flash("Compila la Descrizione dell'obiettivo","err");return}
+    // Auto-generate codice if empty
+    if(!fData.codice&&svc){fData.codice=window._nextCode(fType==="strategic"?"strategic":"operative",svc.code)}
     var area=window.findArea(svc.code);
     var now=new Date().toISOString();
     if(fEditId){
@@ -2395,7 +2459,7 @@ function App(){
         h("button",{onClick:function(){setV("service")},style:{background:"none",border:"none",color:"#0066cc",cursor:"pointer",fontSize:12,fontWeight:600,marginBottom:8}},"< Torna al servizio"),
         h("div",{className:"cd",style:{padding:"16px"}},
           h("h3",{style:{fontSize:14,fontWeight:700,color:fType==="strategic"?"#003366":"#008758",marginBottom:12,paddingBottom:6,borderBottom:"2px solid "+(fType==="strategic"?"#003366":"#008758")}},fType==="strategic"?"Scheda Obiettivo Strategico":"Scheda Obiettivo Operativo"),
-          fType==="strategic"?h(StrForm,{d:fData,s:setFData}):h(OprForm,{d:fData,s:setFData,strDesc:fData.stratRifDesc||fData.stratRif||""}),
+          fType==="strategic"?h(StrForm,{d:fData,s:setFData,svc:svc}):h(OprForm,{d:fData,s:setFData,svc:svc,strDesc:fData.stratRifDesc||fData.stratRif||""}),
           h("button",{onClick:saveForm,style:{width:"100%",padding:"12px",background:fType==="strategic"?"#0066cc":"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:700,fontSize:14,cursor:"pointer",marginTop:14}},fEditId?"Aggiorna Scheda":"Salva e Scarica PDF + Excel")
         )
       ):null,

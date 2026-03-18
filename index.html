@@ -36,7 +36,7 @@ button{font-family:inherit}
 // STORAGE v4: SOLO GET — zero POST, zero CORS, 100% affidabile
 // Ogni operazione (add/update/delete) via GET individuale
 // ════════════════════════════════════════════════
-window.API_URL = "https://script.google.com/macros/s/AKfycbyCgbfCdEr7Nn_BfD3CMZ1wogrN8AZ0phs9_Sge1jSk9oVbWF6YLM6CfoolOuYdPeIH1w/exec"; // <── INCOLLA QUI IL TUO URL
+window.API_URL = "https://script.google.com/macros/s/AKfycbwiTlg8jZJ6URJPfsnyR0N2n7boj4F_F-9tj-nyC6dxsh63b6cNAHqYFtHljd3zdE3XnA/exec"; // <── INCOLLA QUI IL TUO URL
 
 window.SK = "ppo_molise";
 window._SUBS = [];
@@ -59,28 +59,30 @@ window._cloudGet = function(params,callback){
 };
 
 // ── Coda di salvataggio: processa una operazione alla volta ──
+window._queueCallback = null; // called when queue empties
 window._processQueue = function(){
   if(window._saving||!window._saveQueue.length)return;
   window._saving=true;
   var op=window._saveQueue.shift();
+  op.retries=(op.retries||0)+1;
   window._cloudGet(op.params,function(result){
     window._saving=false;
     if(result&&result.ok){
-      console.log("Cloud "+op.params.action+" OK"+(op.id?" id:"+op.id:""));
+      console.log("[CLOUD OK] "+op.params.action+(result.count?" total:"+result.count:"")+(op.id?" id:"+op.id:""));
     }else{
-      console.warn("Cloud "+op.params.action+" FAILED, retrying...",result);
-      window._saveQueue.unshift(op); // Put back at front
+      if(op.retries<3){
+        console.warn("[CLOUD RETRY "+op.retries+"/3] "+op.params.action,result);
+        window._saveQueue.unshift(op);
+      }else{
+        console.error("[CLOUD FAIL] "+op.params.action+" dopo 3 tentativi",result);
+      }
     }
-    // Process next in queue
-    if(window._saveQueue.length) setTimeout(window._processQueue,300);
-    else{
-      window._syncing=false;
-      window.dispatchEvent(new Event("syncStatus"));
-    }
+    if(window._saveQueue.length)setTimeout(window._processQueue,600);
+    else{window._syncing=false;window.dispatchEvent(new Event("syncStatus"))}
   });
 };
 
-// ── Save to localStorage + queue cloud operations ──
+// ── Save to localStorage ──
 window._save = function(s){
   window._SUBS = s;
   try{
@@ -94,9 +96,15 @@ window._cloudSaveEntry = function(entry){
   if(!window.API_URL||!entry)return;
   window._syncing=true;
   window.dispatchEvent(new Event("syncStatus"));
-  var json=JSON.stringify(entry);
-  var b64=window._b64(json);
-  window._saveQueue.push({params:{action:"upsert",id:entry.id,data:b64},id:entry.id});
+  var b64=window._b64(JSON.stringify(entry));
+  // Check URL length (limit ~8000 chars)
+  var testUrl=window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b64);
+  if(testUrl.length>7500){
+    console.warn("[CLOUD] Entry "+entry.id+" troppo grande per GET ("+testUrl.length+" chars), uso bulkSave");
+    window._cloudBulkPush([entry]);
+    return;
+  }
+  window._saveQueue.push({params:{action:"upsert",id:entry.id,data:b64},id:entry.id,retries:0});
   window._processQueue();
 };
 
@@ -105,7 +113,23 @@ window._cloudDeleteEntry = function(id){
   if(!window.API_URL||!id)return;
   window._syncing=true;
   window.dispatchEvent(new Event("syncStatus"));
-  window._saveQueue.push({params:{action:"deleteEntry",id:id}});
+  window._saveQueue.push({params:{action:"deleteEntry",id:id},retries:0});
+  window._processQueue();
+};
+
+// ── Bulk push: invia più entries in un colpo (merge lato server con lock) ──
+window._cloudBulkPush = function(entries){
+  if(!window.API_URL||!entries||!entries.length)return;
+  var b64=window._b64(JSON.stringify(entries));
+  var testUrl=window.API_URL+"?action=bulkSave&data="+encodeURIComponent(b64);
+  if(testUrl.length>7500){
+    // Split in chunks
+    var half=Math.ceil(entries.length/2);
+    window._cloudBulkPush(entries.slice(0,half));
+    window._cloudBulkPush(entries.slice(half));
+    return;
+  }
+  window._saveQueue.push({params:{action:"bulkSave",data:b64},retries:0});
   window._processQueue();
 };
 
@@ -113,7 +137,7 @@ window._cloudDeleteEntry = function(id){
 window._cloudSaveUsers = function(users){
   if(!window.API_URL)return;
   var b64=window._b64(JSON.stringify(users));
-  window._saveQueue.push({params:{action:"saveUsers",data:b64}});
+  window._saveQueue.push({params:{action:"saveUsers",data:b64},retries:0});
   window._processQueue();
 };
 
@@ -175,17 +199,31 @@ window._load = function(){
         var merged=Object.keys(byId).map(function(k){return byId[k]});
         window._SUBS=merged;
         try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
-        // Push local-only or newer entries to cloud
+        // Push local-only or newer entries to cloud, then VERIFY
         if(localOnly.length>0){
           console.log("Pushing "+localOnly.length+" local entries to cloud...");
-          localOnly.forEach(function(e){window._cloudSaveEntry(e)});
+          window._cloudBulkPush(localOnly);
+          // After queue finishes, verify from cloud
+          window._queueCallback=function(){
+            console.log("Push complete, verifying...");
+            window._cloudGet({action:"load"},function(verified){
+              if(verified&&Array.isArray(verified)){
+                console.log("Verified: cloud now has "+verified.length+" entries");
+                if(verified.length>merged.length){
+                  window._SUBS=verified;
+                  try{localStorage.setItem(window.SK,JSON.stringify(verified));localStorage.setItem(window.SK+"_backup",JSON.stringify(verified))}catch(e){}
+                  window.dispatchEvent(new Event("subsChanged"));
+                }
+              }
+            });
+          };
         }
         window.dispatchEvent(new Event("subsChanged"));
         console.log("Cloud load: "+merged.length+" (cloud:"+cloudData.length+", local:"+local.length+", pushed:"+localOnly.length+")");
       }else if(local.length>0){
         // Cloud empty, push ALL local entries
         console.log("Cloud empty, pushing "+local.length+" local entries...");
-        local.forEach(function(e){window._cloudSaveEntry(e)});
+        window._cloudBulkPush(local);
       }
       window.dispatchEvent(new Event("syncStatus"));
     });
@@ -223,7 +261,7 @@ window._forceSync = function(){
     // Push al cloud le entry che mancano
     var cloudIds={};if(cloudData&&Array.isArray(cloudData))cloudData.forEach(function(e){if(e&&e.id)cloudIds[e.id]=true});
     var toPush=merged.filter(function(e){return!cloudIds[e.id]});
-    if(toPush.length>0){console.log("Pushing "+toPush.length+" to cloud");toPush.forEach(function(e){window._cloudSaveEntry(e)})}
+    if(toPush.length>0){console.log("Pushing "+toPush.length+" to cloud");window._cloudBulkPush(toPush)}
     window.dispatchEvent(new Event("subsChanged"));
     window.dispatchEvent(new Event("syncStatus"));
     var cN=cloudData&&Array.isArray(cloudData)?cloudData.length:0;
@@ -269,9 +307,9 @@ window._recover = function(){
     window._SUBS=all;
     window._save(all);
     // Push all to cloud
-    all.forEach(function(e){window._cloudSaveEntry(e)});
+    window._cloudBulkPush(all);
     window.dispatchEvent(new Event("subsChanged"));
-    alert("RECUPERO: trovate "+all.length+" schede (prima: "+window._SUBS.length+").\nTutte caricate nel cloud.");
+    alert("RECUPERO: trovate "+all.length+" schede.\nCaricamento nel cloud in corso...");
   }else{
     alert("Nessun dato aggiuntivo trovato. Schede attuali: "+all.length);
   }

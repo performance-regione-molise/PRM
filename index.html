@@ -76,15 +76,25 @@ window._processQueue = function(){
     window._saving=false;
     if(result&&result.ok){
       console.log("[CLOUD OK] "+op.params.action+(result.count?" total:"+result.count:"")+(op.id?" id:"+op.id:""));
-    }else{
-      if(op.retries<3){
-        console.warn("[CLOUD RETRY "+op.retries+"/3] "+op.params.action,result);
+    }else if(result===null){
+      // Network error — always retry
+      if(op.retries<5){
+        console.warn("[CLOUD NET-ERR retry "+op.retries+"/5] "+op.params.action);
         window._saveQueue.unshift(op);
       }else{
-        console.error("[CLOUD FAIL] "+op.params.action+" dopo 3 tentativi",result);
+        console.error("[CLOUD FAIL-NET] "+op.params.action+" dopo 5 tentativi");
+      }
+    }else{
+      if(op.retries<5){
+        console.warn("[CLOUD RETRY "+op.retries+"/5] "+op.params.action,result);
+        window._saveQueue.unshift(op);
+      }else{
+        console.error("[CLOUD FAIL] "+op.params.action+" dopo 5 tentativi",result);
       }
     }
-    if(window._saveQueue.length)setTimeout(window._processQueue,600);
+    // Progressive delay: 600ms, 1200ms, 2400ms, 4800ms...
+    var delay=600*Math.pow(2,Math.min(op.retries-1,3));
+    if(window._saveQueue.length)setTimeout(window._processQueue,delay);
     else{
       window._syncing=false;
       window.dispatchEvent(new Event("syncStatus"));
@@ -320,6 +330,38 @@ window._forceSync = function(){
     window.dispatchEvent(new Event("syncStatus"));
   });
 };
+
+// ── AUTO-SYNC: ogni 30s verifica e pusha schede mancanti ──
+window._autoSyncInterval=null;
+window._startAutoSync=function(){
+  if(window._autoSyncInterval||!window.API_URL)return;
+  window._autoSyncInterval=setInterval(function(){
+    if(window._saving||window._saveQueue.length||window._syncing)return; // Skip if busy
+    window._cloudGet({action:"load"},function(cloud){
+      if(!cloud||!Array.isArray(cloud))return;
+      var cloudIds={};cloud.forEach(function(e){if(e&&e.id)cloudIds[e.id]=true});
+      var missing=window._SUBS.filter(function(e){return e&&e.id&&!cloudIds[e.id]});
+      if(missing.length>0){
+        console.log("[AUTO-SYNC] "+missing.length+" schede locali mancano nel cloud, pushing...");
+        missing.forEach(function(e){window._cloudSaveEntry(e)});
+      }
+      // Also check if cloud has entries we don't have locally
+      var localIds={};window._SUBS.forEach(function(e){if(e&&e.id)localIds[e.id]=true});
+      var cloudOnly=cloud.filter(function(e){return e&&e.id&&!localIds[e.id]});
+      if(cloudOnly.length>0){
+        console.log("[AUTO-SYNC] "+cloudOnly.length+" schede nel cloud mancano in locale, merging...");
+        var byId={};window._SUBS.forEach(function(e){if(e&&e.id)byId[e.id]=e});
+        cloudOnly.forEach(function(e){byId[e.id]=e});
+        var merged=Object.keys(byId).map(function(k){return byId[k]});
+        window._SUBS=merged;
+        try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
+        window.dispatchEvent(new Event("subsChanged"));
+      }
+    });
+  },30000); // ogni 30 secondi
+};
+// Avvia auto-sync dopo 10 secondi dal caricamento
+setTimeout(function(){window._startAutoSync()},10000);
 
 // ── Send email via GET ──
 window._sendEmail = function(name,email,pwd,callback){

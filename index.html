@@ -37,7 +37,7 @@ button{font-family:inherit}
 // STORAGE v4: SOLO GET — zero POST, zero CORS, 100% affidabile
 // Ogni operazione (add/update/delete) via GET individuale
 // ════════════════════════════════════════════════
-window.API_URL = "https://script.google.com/macros/s/AKfycbwiTlg8jZJ6URJPfsnyR0N2n7boj4F_F-9tj-nyC6dxsh63b6cNAHqYFtHljd3zdE3XnA/exec"; // <── INCOLLA QUI IL TUO URL
+window.API_URL = "https://script.google.com/macros/s/AKfycbxZTCagYWCR1nKgSYKZ1ubl5Tlr53bXxNj_kLp7Hz8SWFFxS2lTVHzFA2Ld616qoGUb2Q/exec"; // <── INCOLLA QUI IL TUO URL
 
 window.SK = "ppo_molise";
 window._SUBS = [];
@@ -312,6 +312,32 @@ window._startAutoSync=function(){
         window._SUBS=merged;
         try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
         window.dispatchEvent(new Event("subsChanged"));
+      }
+    });
+    // ── Auto-sync UTENTI ──
+    window._cloudGet({action:"loadUsers"},function(cloudUsers){
+      if(!cloudUsers||!Array.isArray(cloudUsers))return;
+      var localUsers=[];try{localUsers=JSON.parse(localStorage.getItem("ppo_users")||"[]")}catch(e){}
+      var byName={};
+      cloudUsers.forEach(function(u){if(u&&u.name)byName[u.name]=u});
+      var changed=false;
+      localUsers.forEach(function(u){
+        if(!u||!u.name)return;
+        if(!byName[u.name]){byName[u.name]=u;changed=true}
+        else{
+          var cu=byName[u.name];
+          if(u.email&&!cu.email){cu.email=u.email;changed=true}
+          if(u.pwd&&u.pwd!=="(migrato)"&&(!cu.pwd||cu.pwd==="(migrato)")){cu.pwd=u.pwd;cu.hash=u.hash||cu.hash;changed=true}
+        }
+      });
+      var merged=Object.keys(byName).map(function(k){return byName[k]});
+      if(merged.length>localUsers.length||changed){
+        try{localStorage.setItem("ppo_users",JSON.stringify(merged))}catch(e){}
+        window.dispatchEvent(new Event("usersChanged"));
+        if(merged.length>cloudUsers.length){
+          console.log("[AUTO-SYNC] Users: pushing "+merged.length+" (cloud had "+cloudUsers.length+")");
+          window._cloudSaveUsers(merged);
+        }
       }
     });
   },15000); // ogni 15 secondi
@@ -2052,6 +2078,7 @@ function App(){
   var _ch=useState(""),curHash=_ch[0],setCH=_ch[1];
 
   useEffect(function(){var handler=function(){setSubs(window._SUBS.slice())};window.addEventListener("subsChanged",handler);return function(){window.removeEventListener("subsChanged",handler)}},[]);
+  useEffect(function(){var handler=function(){try{var u=JSON.parse(localStorage.getItem("ppo_users")||"[]");setUsers(u)}catch(e){}};window.addEventListener("usersChanged",handler);return function(){window.removeEventListener("usersChanged",handler)}},[]);
   // Admin edit from archive
   useEffect(function(){
     var handler=function(){

@@ -44,7 +44,7 @@ button{font-family:inherit}
 // STORAGE v4: SOLO GET — zero POST, zero CORS, 100% affidabile
 // Ogni operazione (add/update/delete) via GET individuale
 // ════════════════════════════════════════════════
-window.API_URL = "https://script.google.com/macros/s/AKfycbw_ExmqjliKcLxCeeKGmXi13xe7Hj0I31-kK1zHa-HR7mJ-PAntztpKLqev4Fvc0V0sCQ/exec"; // <── INCOLLA QUI IL TUO URL
+window.API_URL = "https://script.google.com/macros/s/AKfycbybSKX7cyn4eQfOHkQc6MNt7TlGpk4buQEO1XPuY17EiC5EzH-WitygEcJWqpjeimSDxw/exec"; // <── INCOLLA QUI IL TUO URL
 
 window.SK = "ppo_molise";
 window._SUBS = [];
@@ -325,11 +325,22 @@ window._startAutoSync=function(){
   if(window._autoSyncInterval||!window.API_URL)return;
   window._autoSyncInterval=setInterval(function(){
     if(window._saving||window._saveQueue.length||window._syncing)return;
+    // Refresh deleted IDs list
+    window._loadDeletedIds(function(){
+      // Remove deleted entries from local
+      var before=window._SUBS.length;
+      window._SUBS=window._filterDeleted(window._SUBS);
+      if(window._SUBS.length<before){
+        try{localStorage.setItem(window.SK,JSON.stringify(window._SUBS));localStorage.setItem(window.SK+"_backup",JSON.stringify(window._SUBS))}catch(e){}
+        window.dispatchEvent(new Event("subsChanged"));
+        console.log("[AUTO-SYNC] Removed "+(before-window._SUBS.length)+" deleted entries from local");
+      }
+    });
     window._cloudGet({action:"load"},function(cloud){
       if(!cloud||!Array.isArray(cloud))return;
-      // 1. PULL: add cloud entries we don't have locally
+      // 1. PULL: add cloud entries we don't have locally (skip deleted)
       var localIds={};window._SUBS.forEach(function(e){if(e&&e.id)localIds[e.id]=true});
-      var cloudOnly=cloud.filter(function(e){return e&&e.id&&!localIds[e.id]});
+      var cloudOnly=cloud.filter(function(e){return e&&e.id&&!localIds[e.id]&&!window._isDeleted(e.id)});
       if(cloudOnly.length>0){
         console.log("[AUTO-SYNC] Pull: +"+cloudOnly.length+" dal cloud");
         var byId={};window._SUBS.forEach(function(e){if(e&&e.id)byId[e.id]=e});
@@ -622,7 +633,7 @@ window.sumWeights = function(entries){var t=0;entries.forEach(function(e){t+=par
 // ════════════════════════════════════════════════
 // PDF GENERATION
 // ════════════════════════════════════════════════
-window._mkPDF = function(en,targetDoc){
+window._mkPDF = function(en,targetDoc,noSave){
   var doc=targetDoc||new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
   if(targetDoc)doc.addPage("a4","landscape");
   var W=297,H=210,mx=5,mxR=W-5,cW=mxR-mx;
@@ -826,7 +837,8 @@ window._mkPDF = function(en,targetDoc){
   doc.setFontSize(5.5);doc.setFont(undefined,"normal");doc.setTextColor(100);
   doc.text("Regione Molise - Piano Performance Organizzativa 2026/2028 - DGR n. 149/2025",mx,H-3.5);
   var pfx=isStr?"STR":"OPR";
-  doc.save("Scheda_"+pfx+"_"+sC.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".pdf");
+  if(!noSave)doc.save("Scheda_"+pfx+"_"+sC.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".pdf");
+  return doc;
 };
 
 // ════════════════════════════════════════════════
@@ -1104,7 +1116,7 @@ window._exportPacchetto=function(){
   // 2. Unico PDF con tutte le schede ordinate per servizio
   try{
     var pdfDoc=null;
-    sorted.forEach(function(entry){pdfDoc=window._mkPDF(entry,pdfDoc)});
+    sorted.forEach(function(entry){pdfDoc=window._mkPDF(entry,pdfDoc,true)});
     if(pdfDoc){
       if(pdfDoc.getNumberOfPages()>sorted.length)pdfDoc.deletePage(1);
       pdfDoc.save("Pacchetto_PDF_Performance_"+new Date().toISOString().slice(0,10)+".pdf");

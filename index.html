@@ -325,7 +325,7 @@ window._startAutoSync=function(){
   if(window._autoSyncInterval||!window.API_URL)return;
   window._autoSyncInterval=setInterval(function(){
     if(window._saving||window._saveQueue.length||window._syncing)return;
-    // Refresh deleted IDs list
+    // Step 1: Refresh deleted IDs list FIRST, THEN do cloud sync
     window._loadDeletedIds(function(){
       // Remove deleted entries from local
       var before=window._SUBS.length;
@@ -333,33 +333,31 @@ window._startAutoSync=function(){
       if(window._SUBS.length<before){
         try{localStorage.setItem(window.SK,JSON.stringify(window._SUBS));localStorage.setItem(window.SK+"_backup",JSON.stringify(window._SUBS))}catch(e){}
         window.dispatchEvent(new Event("subsChanged"));
-        console.log("[AUTO-SYNC] Removed "+(before-window._SUBS.length)+" deleted entries from local");
+        console.log("[AUTO-SYNC] Removed "+(before-window._SUBS.length)+" deleted entries");
       }
-    });
-    window._cloudGet({action:"load"},function(cloud){
-      if(!cloud||!Array.isArray(cloud))return;
-      // 1. PULL: add cloud entries we don't have locally (skip deleted)
-      var localIds={};window._SUBS.forEach(function(e){if(e&&e.id)localIds[e.id]=true});
-      var cloudOnly=cloud.filter(function(e){return e&&e.id&&!localIds[e.id]&&!window._isDeleted(e.id)});
-      if(cloudOnly.length>0){
-        console.log("[AUTO-SYNC] Pull: +"+cloudOnly.length+" dal cloud");
-        var byId={};window._SUBS.forEach(function(e){if(e&&e.id)byId[e.id]=e});
-        cloudOnly.forEach(function(e){byId[e.id]=e});
-        var merged=Object.keys(byId).map(function(k){return byId[k]});
-        window._SUBS=merged;
-        try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
-        window.dispatchEvent(new Event("subsChanged"));
-      }
-      // 2. PUSH: only entries NOT yet pushed in this session and NOT in cloud
-      var cloudIds={};cloud.forEach(function(e){if(e&&e.id)cloudIds[e.id]=true});
-      var toPush=window._SUBS.filter(function(e){return e&&e.id&&!cloudIds[e.id]&&!window._pushedIds[e.id]&&!window._isDeleted(e.id)});
-      if(toPush.length>0){
-        console.log("[AUTO-SYNC] Push: "+toPush.length+" schede nuove");
-        toPush.forEach(function(e){
-          window._pushedIds[e.id]=true; // Mark as pushed — won't re-push
-          window._cloudSaveEntry(e);
-        });
-      }
+      // Step 2: AFTER deleted list loaded, sync cloud data
+      window._cloudGet({action:"load"},function(cloud){
+        if(!cloud||!Array.isArray(cloud))return;
+        // PULL: add cloud entries we don't have locally (skip deleted)
+        var localIds={};window._SUBS.forEach(function(e){if(e&&e.id)localIds[e.id]=true});
+        var cloudOnly=cloud.filter(function(e){return e&&e.id&&!localIds[e.id]&&!window._isDeleted(e.id)});
+        if(cloudOnly.length>0){
+          console.log("[AUTO-SYNC] Pull: +"+cloudOnly.length+" dal cloud");
+          var byId={};window._SUBS.forEach(function(e){if(e&&e.id)byId[e.id]=e});
+          cloudOnly.forEach(function(e){byId[e.id]=e});
+          var merged=Object.keys(byId).map(function(k){return byId[k]});
+          window._SUBS=merged;
+          try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
+          window.dispatchEvent(new Event("subsChanged"));
+        }
+        // PUSH: only entries NOT yet pushed and NOT deleted
+        var cloudIds={};cloud.forEach(function(e){if(e&&e.id)cloudIds[e.id]=true});
+        var toPush=window._SUBS.filter(function(e){return e&&e.id&&!cloudIds[e.id]&&!window._pushedIds[e.id]&&!window._isDeleted(e.id)});
+        if(toPush.length>0){
+          console.log("[AUTO-SYNC] Push: "+toPush.length+" schede nuove");
+          toPush.forEach(function(e){window._pushedIds[e.id]=true;window._cloudSaveEntry(e)});
+        }
+      });
     });
     // ── Auto-sync UTENTI (solo pull) ──
     window._cloudGet({action:"loadUsers"},function(cloudUsers){
@@ -1650,7 +1648,7 @@ function Dash(p){
         h("button",{onClick:function(){window._exportIndicatoriOPR()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Indicatori Operativi (.xlsx)"),
         h("button",{onClick:function(){window._exportPerArea()},style:{padding:"8px 16px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Riepilogo per Area (.xlsx)"),
         h("button",{onClick:function(){window._exportPerServizio()},style:{padding:"8px 16px",background:"#5c6f82",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Riepilogo per Servizio (.xlsx)"),
-        h("button",{onClick:function(){window._exportAll()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Export Completo (.xlsx)")
+        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto (Excel+PDF)")
       )
     ),
 
@@ -1811,7 +1809,7 @@ function Dash(p){
         h("button",{onClick:function(){window._exportIndicatoriOPR()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Indicatori Operativi (.xlsx)"),
         h("button",{onClick:function(){window._exportPerArea()},style:{padding:"8px 16px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Spaccato per Area (.xlsx)"),
         h("button",{onClick:function(){window._exportPerServizio()},style:{padding:"8px 16px",background:"#5c6f82",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Spaccato per Servizio (.xlsx)"),
-        h("button",{onClick:function(){window._exportAll()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Export Completo (.xlsx)")
+        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Esporta Tutto (Excel+PDF)")
       )
     ),
 
@@ -2621,7 +2619,7 @@ function App(){
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
           h("div",null,h("h1",{style:{fontFamily:"Lora,serif",fontSize:18,fontWeight:700}},"Pannello Admin"),h("p",{style:{color:"#5c6f82",fontSize:11}},subs.length+" schede | "+users.length+" utenti registrati")),
           h("div",{style:{display:"flex",gap:4}},
-            h("button",{onClick:function(){window._exportAll()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto"),
+            h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto (Excel+PDF)"),
             h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Pacchetto"),
             h("button",{onClick:function(){window._recover()},style:{padding:"8px 16px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Recupera Dati")
           )

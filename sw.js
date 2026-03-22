@@ -1,5 +1,5 @@
-// Service Worker — PPO Molise PWA
-var CACHE_NAME = 'ppo-molise-v1';
+// Service Worker — PPO Molise PWA v2
+var CACHE_NAME = 'ppo-molise-v2';
 var URLS_TO_CACHE = [
   './',
   './index.html',
@@ -33,12 +33,25 @@ self.addEventListener('activate', function(e) {
 });
 
 self.addEventListener('fetch', function(e) {
-  // Network first for API calls
   if (e.request.url.indexOf('script.google.com') >= 0) {
     e.respondWith(fetch(e.request));
     return;
   }
-  // Cache first, fallback to network for everything else
+  // NETWORK FIRST for HTML pages (always get latest)
+  if (e.request.url.indexOf('.html') >= 0 || e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request).then(function(response) {
+        return caches.open(CACHE_NAME).then(function(cache) {
+          cache.put(e.request, response.clone());
+          return response;
+        });
+      }).catch(function() {
+        return caches.match(e.request);
+      })
+    );
+    return;
+  }
+  // Cache first for CDN libraries
   e.respondWith(
     caches.match(e.request).then(function(cached) {
       return cached || fetch(e.request).then(function(response) {

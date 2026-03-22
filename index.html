@@ -969,8 +969,9 @@ window._mkXLS = function(en){
 // ════════════════════════════════════════════════
 // PDF WEB-STYLE (layout simile alla pagina di compilazione)
 // ════════════════════════════════════════════════
-window._mkPDFweb = function(en){
-  var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+window._mkPDFweb = function(en,targetDoc,noSave){
+  var doc=targetDoc||new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  if(targetDoc)doc.addPage("a4","landscape");
   var W=297,H=210,mx=8,mxR=W-8;
   var d=en.data,area=en.areaName,sN=en.serviceName,sC=en.serviceCode;
   var isStr=en.type==="strategic";
@@ -1066,7 +1067,8 @@ window._mkPDFweb = function(en){
   doc.setFontSize(5);doc.setFont(undefined,"normal");doc.setTextColor(100);
   doc.text("Regione Molise - Piano della Performance Organizzativa 2026-2028 | Direzione Generale Servizio di Supporto al Direttore Generale",mx,H-3.5);
   var pfx=isStr?"STR":"OPR";
-  doc.save("Scheda_"+pfx+"_web_"+sC.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".pdf");
+  if(!noSave)doc.save("Scheda_"+pfx+"_web_"+sC.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".pdf");
+  return doc;
 };
 
 // Archive handlers
@@ -1113,48 +1115,51 @@ window._exportPacchetto=function(){
     Autore:e.createdBy||"",Creato:e.createdAt||""
   }})),"Riepilogo");
   XLSX.writeFile(wb,"Pacchetto_Performance_"+new Date().toISOString().slice(0,10)+".xlsx");
-  // 2. Unico PDF con tutte le schede ordinate per servizio
-  try{
-    var pdfDoc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-    // ── FRONTESPIZIO ──
-    pdfDoc.setFillColor(0,51,102);pdfDoc.rect(0,0,297,210,"F");
-    try{pdfDoc.addImage(window.LOGO_MD,"PNG",118,30,60,60)}catch(e){}
-    pdfDoc.setTextColor(255);pdfDoc.setFontSize(18);pdfDoc.setFont(undefined,"bold");
-    pdfDoc.text("REGIONE MOLISE",148,110,{align:"center"});
-    pdfDoc.setFontSize(12);pdfDoc.setFont(undefined,"normal");
-    pdfDoc.text("Piano della Performance Organizzativa",148,125,{align:"center"});
-    pdfDoc.text("delle strutture della Giunta Regionale",148,133,{align:"center"});
-    pdfDoc.text("per il ciclo di programmazione 2026-2028",148,141,{align:"center"});
-    pdfDoc.setFontSize(8);pdfDoc.setTextColor(200,168,76);
-    pdfDoc.text("Direzione Generale Servizio di Supporto al Direttore Generale",297-10,210-8,{align:"right"});
-    // ── INDICE ──
-    pdfDoc.addPage("a4","landscape");
-    pdfDoc.setTextColor(0);pdfDoc.setFontSize(14);pdfDoc.setFont(undefined,"bold");
-    pdfDoc.text("INDICE",10,15);
-    pdfDoc.setFontSize(8);pdfDoc.setFont(undefined,"normal");
-    var iy=25;var pageNum=3;
-    var prevSvc="";
+  // Helper: genera frontespizio + indice
+  var mkFrontIndex=function(doc,sorted){
+    doc.setFillColor(0,51,102);doc.rect(0,0,297,210,"F");
+    try{doc.addImage(window.LOGO_MD,"PNG",118,30,60,60)}catch(e){}
+    doc.setTextColor(255);doc.setFontSize(18);doc.setFont(undefined,"bold");
+    doc.text("REGIONE MOLISE",148,110,{align:"center"});
+    doc.setFontSize(12);doc.setFont(undefined,"normal");
+    doc.text("Piano della Performance Organizzativa",148,125,{align:"center"});
+    doc.text("delle strutture della Giunta Regionale",148,133,{align:"center"});
+    doc.text("per il ciclo di programmazione 2026-2028",148,141,{align:"center"});
+    doc.setFontSize(8);doc.setTextColor(200,168,76);
+    doc.text("Direzione Generale Servizio di Supporto al Direttore Generale",287,202,{align:"right"});
+    doc.addPage("a4","landscape");
+    doc.setTextColor(0);doc.setFontSize(14);doc.setFont(undefined,"bold");
+    doc.text("INDICE",10,15);
+    doc.setFontSize(8);doc.setFont(undefined,"normal");
+    var iy=25,prevSvc="";
     sorted.forEach(function(e){
       if(e.serviceCode!==prevSvc){
-        if(iy>190){pdfDoc.addPage("a4","landscape");iy=15;pageNum++}
-        pdfDoc.setFont(undefined,"bold");pdfDoc.setFontSize(9);
-        pdfDoc.text(e.serviceCode+" - "+e.serviceName,10,iy);
+        if(iy>190){doc.addPage("a4","landscape");iy=15}
+        doc.setFont(undefined,"bold");doc.setFontSize(9);
+        doc.text(e.serviceCode+" - "+e.serviceName,10,iy);
         prevSvc=e.serviceCode;iy+=5;
-        pdfDoc.setFont(undefined,"normal");pdfDoc.setFontSize(8);
+        doc.setFont(undefined,"normal");doc.setFontSize(8);
       }
-      if(iy>195){pdfDoc.addPage("a4","landscape");iy=15;pageNum++}
-      var prefix=e.type==="strategic"?"  STR: ":"    OPR: ";
-      pdfDoc.text(prefix+(e.data.codice||"")+" - "+(e.data.nome||"").substring(0,80),16,iy);
+      if(iy>195){doc.addPage("a4","landscape");iy=15}
+      doc.text((e.type==="strategic"?"  STR: ":"    OPR: ")+(e.data.codice||"")+" - "+(e.data.nome||"").substring(0,80),16,iy);
       iy+=4;
     });
-    // ── SCHEDE ──
-    sorted.forEach(function(entry){pdfDoc=window._mkPDF(entry,pdfDoc,true)});
-    if(pdfDoc){
-      // Frontispiece + index + schede = PDF completo
-      pdfDoc.save("Pacchetto_PDF_Performance_"+new Date().toISOString().slice(0,10)+".pdf");
-      alert("Esportazione completata!\n\n- 1 Excel riepilogo ("+sorted.length+" schede)\n- 1 PDF unico ("+sorted.length+" pagine)\n\nOrdinati per Servizio");
-    }
-  }catch(e){console.error(e);alert("Errore PDF: "+e.message)}
+  };
+  // 2. PDF Formale
+  try{
+    var pdfF=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+    mkFrontIndex(pdfF,sorted);
+    sorted.forEach(function(entry){pdfF=window._mkPDF(entry,pdfF,true)});
+    pdfF.save("Pacchetto_Formale_"+new Date().toISOString().slice(0,10)+".pdf");
+  }catch(e){console.error("PDF Formale:",e)}
+  // 3. PDF Web-style
+  try{
+    var pdfW=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+    mkFrontIndex(pdfW,sorted);
+    sorted.forEach(function(entry){pdfW=window._mkPDFweb(entry,pdfW,true)});
+    pdfW.save("Pacchetto_Web_"+new Date().toISOString().slice(0,10)+".pdf");
+  }catch(e){console.error("PDF Web:",e)}
+  alert("Esportazione completata!\n\n- 1 Excel riepilogo\n- 1 PDF Formale ("+sorted.length+" schede)\n- 1 PDF Web ("+sorted.length+" schede)\n\nOrdinati per Servizio");
 };
 
 // Esporta Alberatura OVP > STR > OPR
@@ -1696,7 +1701,7 @@ function Dash(p){
         h("button",{onClick:function(){window._exportIndicatoriOPR()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Indicatori Operativi (.xlsx)"),
         h("button",{onClick:function(){window._exportPerArea()},style:{padding:"8px 16px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Riepilogo per Area (.xlsx)"),
         h("button",{onClick:function(){window._exportPerServizio()},style:{padding:"8px 16px",background:"#5c6f82",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Riepilogo per Servizio (.xlsx)"),
-        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto (Excel+PDF)")
+        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Pacchetto (Excel + PDF)")
       )
     ),
 
@@ -1857,7 +1862,7 @@ function Dash(p){
         h("button",{onClick:function(){window._exportIndicatoriOPR()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Indicatori Operativi (.xlsx)"),
         h("button",{onClick:function(){window._exportPerArea()},style:{padding:"8px 16px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Spaccato per Area (.xlsx)"),
         h("button",{onClick:function(){window._exportPerServizio()},style:{padding:"8px 16px",background:"#5c6f82",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Spaccato per Servizio (.xlsx)"),
-        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Esporta Tutto (Excel+PDF)")
+        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Esporta Pacchetto (Excel + PDF)")
       )
     ),
 
@@ -2424,6 +2429,7 @@ function App(){
       window._cloudSaveEntry(en);
       // Download
       try{window._mkPDF(en)}catch(e){console.error(e);alert("Errore PDF: "+e.message)}
+      setTimeout(function(){try{window._mkPDFweb(en)}catch(e){console.error(e)}},1500);
       setTimeout(function(){try{window._mkXLS(en)}catch(e){console.error(e);alert("Errore XLS: "+e.message)}},1200);
       flash("Salvato da "+curAuthor+"! PDF+XLS in download...");
     }
@@ -2667,8 +2673,7 @@ function App(){
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
           h("div",null,h("h1",{style:{fontFamily:"Lora,serif",fontSize:18,fontWeight:700}},"Pannello Admin"),h("p",{style:{color:"#5c6f82",fontSize:11}},subs.length+" schede | "+users.length+" utenti registrati")),
           h("div",{style:{display:"flex",gap:4}},
-            h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Tutto (Excel+PDF)"),
-            h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Pacchetto"),
+            h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Pacchetto (Excel + PDF Formale + PDF Web)"),
             h("button",{onClick:function(){window._recover()},style:{padding:"8px 16px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Recupera Dati")
           )
         ),

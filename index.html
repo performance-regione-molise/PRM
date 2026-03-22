@@ -1181,6 +1181,86 @@ window._exportAlberatura=function(){
   XLSX.writeFile(wb,"Alberatura_OVP_"+new Date().toISOString().slice(0,10)+".xlsx");
 };
 
+// Esporta OVP Excel
+window._exportOVPexcel=function(){
+  var ovps=window._loadOVP()||[];var subs=window._SUBS;
+  var wb=XLSX.utils.book_new();
+  // Foglio riepilogo OVP
+  var rows=[];
+  ovps.forEach(function(o){
+    var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===o.id});
+    var linkedOprs=subs.filter(function(s){if(s.type!=="operative")return false;var p=subs.filter(function(x){return x.id===s.parentId})[0];return p&&p.data.ovpRef===o.id});
+    o.indicatori.forEach(function(ind,ii){
+      rows.push({OVP:o.cod,Nome_OVP:ii===0?o.nome:"",Indicatore:ind.nome,Formula:ind.formula||"",Fonte:ind.fonte||"",Baseline:ind.baseline||"",
+        Target_2026:ind.t1||"",Target_2027:ind.t2||"",Target_2028:ind.t3||"",Tipo:ind.tipo||"",BES_PNRR:ind.bes||"",
+        Missioni:ii===0?o.missioni.map(function(m){return"M"+m}).join(", "):"",
+        STR_Collegati:ii===0?linkedStrs.length:"",OPR_Collegati:ii===0?linkedOprs.length:""});
+    });
+    if(!o.indicatori.length){
+      rows.push({OVP:o.cod,Nome_OVP:o.nome,Indicatore:"(nessun indicatore)",STR_Collegati:linkedStrs.length,OPR_Collegati:linkedOprs.length});
+    }
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),"OVP_Indicatori");
+  // Foglio collegamenti
+  var links=[];
+  ovps.forEach(function(o){
+    subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===o.id}).forEach(function(str){
+      var oprs=subs.filter(function(x){return x.type==="operative"&&x.parentId===str.id});
+      links.push({OVP:o.cod,STR_Codice:str.data.codice,STR_Nome:(str.data.nome||"").substring(0,60),Servizio:str.serviceCode,N_OPR:oprs.length});
+    });
+  });
+  if(links.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(links),"OVP_STR_Collegamenti");
+  XLSX.writeFile(wb,"OVP_Performance_"+new Date().toISOString().slice(0,10)+".xlsx");
+};
+
+// Esporta OVP PDF
+window._exportOVPpdf=function(){
+  var ovps=window._loadOVP()||[];var subs=window._SUBS;
+  var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var W=297,H=210,mx=8;
+  // Header
+  doc.setFillColor(0,51,102);doc.rect(0,0,W,18,"F");
+  try{doc.addImage(window.LOGO_MD,"PNG",5,1,15,15)}catch(e){}
+  doc.setTextColor(255);doc.setFontSize(11);doc.setFont(undefined,"bold");doc.text("REGIONE MOLISE",23,7);
+  doc.setFontSize(8);doc.setFont(undefined,"normal");
+  doc.text("Obiettivi di Valore Pubblico 2026-2028",23,12);
+  doc.text("Direzione Generale Servizio di Supporto al Direttore Generale",23,16);
+  var y=24;
+  ovps.forEach(function(ovp,oi){
+    if(y>H-50){doc.addPage("a4","landscape");y=12;}
+    // OVP title
+    doc.setFillColor(142,68,173);doc.rect(mx,y,W-16,7,"F");
+    doc.setTextColor(255);doc.setFontSize(10);doc.setFont(undefined,"bold");
+    doc.text(ovp.cod+" - "+ovp.nome.substring(0,90),mx+3,y+5);y+=9;
+    // Missioni
+    doc.setTextColor(0);doc.setFontSize(7);doc.setFont(undefined,"normal");
+    doc.text("Missioni: "+ovp.missioni.map(function(m){return"M"+m}).join(", "),mx+2,y+3);y+=5;
+    // Indicatori table
+    if(ovp.indicatori.length){
+      doc.autoTable({startY:y,margin:{left:mx,right:8},head:[["Indicatore","Formula","Fonte","Baseline","T 2026","T 2027","T 2028","Tipo","BES/PNRR"]],
+        body:ovp.indicatori.map(function(ind){return[ind.nome||"",ind.formula||"",ind.fonte||"",ind.baseline||"",ind.t1||"",ind.t2||"",ind.t3||"",ind.tipo||"",ind.bes||""]}),
+        theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[142,68,173],textColor:255,fontSize:6.5}
+      });
+      y=doc.lastAutoTable.finalY+4;
+    }
+    // Linked STR
+    var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
+    if(linkedStrs.length){
+      doc.setFontSize(7);doc.setFont(undefined,"bold");doc.text("Obiettivi Strategici collegati ("+linkedStrs.length+"):",mx+2,y+3);y+=4;
+      doc.setFont(undefined,"normal");doc.setFontSize(6.5);
+      linkedStrs.forEach(function(s){
+        if(y>H-10){doc.addPage("a4","landscape");y=12;}
+        doc.text("  "+s.data.codice+" - "+s.serviceCode+" - "+(s.data.nome||"").substring(0,70),mx+2,y+3);y+=3.5;
+      });
+    }
+    y+=6;
+  });
+  // Footer
+  doc.setFontSize(5);doc.setTextColor(100);
+  doc.text("Regione Molise - Piano della Performance Organizzativa 2026-2028",mx,H-4);
+  doc.save("OVP_Performance_"+new Date().toISOString().slice(0,10)+".pdf");
+};
+
 // Esporta Indicatori Dashboard
 window._exportIndicatori=function(){
   var subs=window._SUBS;var wb=XLSX.utils.book_new();var rows=[];
@@ -1442,15 +1522,15 @@ function OprForm(p){
         h(F,{l:"Descrizione Indicatore"},h("textarea",{style:TS2,value:d.descrIndicatore||"",onChange:u("descrIndicatore")}))
       ),
       h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
-        h(F,{l:"BASELINE"},h("input",{style:IS,value:d.baseline,onChange:u("baseline")})),
-        h(F,{l:"FONTE"},h("input",{style:IS,value:d.fonte,onChange:u("fonte")})),
+        h(F,{l:"BASELINE"},h("textarea",{style:Object.assign({},TS2,{minHeight:36}),value:d.baseline,onChange:u("baseline")})),
+        h(F,{l:"FONTE"},h("textarea",{style:Object.assign({},TS2,{minHeight:36}),value:d.fonte,onChange:u("fonte")})),
         h(F,{l:"Unita di misura"},h("input",{style:IS,value:d.um,onChange:u("um")}))
       ),
       h(F,{l:"Formula"},h("input",{style:IS,value:d.formula,onChange:u("formula")})),
       h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},
-        h(F,{l:"Risultato atteso 2026"},h("input",{style:IS,value:d.ris2026,onChange:u("ris2026")})),
-        h(F,{l:"Risultato atteso 2027"},h("input",{style:IS,value:d.ris2027,onChange:u("ris2027")})),
-        h(F,{l:"Risultato atteso 2028"},h("input",{style:IS,value:d.ris2028,onChange:u("ris2028")}))
+        h(F,{l:"Risultato atteso 2026"},h("textarea",{style:Object.assign({},TS2,{minHeight:36}),value:d.ris2026,onChange:u("ris2026")})),
+        h(F,{l:"Risultato atteso 2027"},h("textarea",{style:Object.assign({},TS2,{minHeight:36}),value:d.ris2027,onChange:u("ris2027")})),
+        h(F,{l:"Risultato atteso 2028"},h("textarea",{style:Object.assign({},TS2,{minHeight:36}),value:d.ris2028,onChange:u("ris2028")}))
       )
     )
   );
@@ -1530,7 +1610,7 @@ function Dash(p){
     else rND++;
   });
   // Natura OPR (dimensione)
-  var natC={};oprs.forEach(function(x){var n=x.data.natura;if(n){var dim=n.split(" - ")[0]||n;natC[dim]=(natC[dim]||0)+1}});
+  var natC={};oprs.forEach(function(x){var n=x.data.natura;if(!n)return;var items=Array.isArray(n)?n:(typeof n==="string"?[n]:[]);items.forEach(function(v){var dim=(typeof v==="string"?v.split(" - ")[0]:v)||"Altro";natC[dim]=(natC[dim]||0)+1})});
   // Completezza indicatori
   var indOK=0,indMiss=0;
   s.forEach(function(x){if(x.data.indicatore&&x.data.indicatore.trim())indOK++;else indMiss++});
@@ -2048,9 +2128,10 @@ function Dash(p){
           var dim="";
           if(e.type==="strategic"&&d.impatto&&d.impatto.length)dim="IMPATTO";
           if(e.type==="operative"&&d.natura){
-            if(d.natura.indexOf("EFFICACIA")>=0)dim="EFFICACIA";
-            else if(d.natura.indexOf("EFFICIENZA")>=0)dim="EFFICIENZA";
-            else if(d.natura.indexOf("SALUTE")>=0)dim="SALUTE";
+            var natStr=Array.isArray(d.natura)?d.natura.join(" "):typeof d.natura==="string"?d.natura:"";
+            if(natStr.indexOf("EFFICACIA")>=0)dim="EFFICACIA";
+            else if(natStr.indexOf("EFFICIENZA")>=0)dim="EFFICIENZA";
+            else if(natStr.indexOf("SALUTE")>=0)dim="SALUTE";
           }
           // Apply filters
           if(searchFilt&&d.indicatore.toLowerCase().indexOf(searchFilt.toLowerCase())<0)return;
@@ -2786,7 +2867,11 @@ function App(){
         aTab==="ovp"?h("div",null,
           h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
             h("div",{style:{fontWeight:700,fontSize:14,color:"#8e44ad"}},"Obiettivi di Valore Pubblico 2026-2028"),
-            h("button",{onClick:addOvp,style:{padding:"6px 14px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:11,cursor:"pointer"}},"+  Aggiungi OVP")
+            h("div",{style:{display:"flex",gap:6}},
+              h("button",{onClick:function(){window._exportOVPexcel()},style:{padding:"6px 12px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"Scarica Excel"),
+              h("button",{onClick:function(){window._exportOVPpdf()},style:{padding:"6px 12px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"Scarica PDF"),
+              h("button",{onClick:addOvp,style:{padding:"6px 14px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:11,cursor:"pointer"}},"+  Aggiungi OVP")
+            )
           ),
           // Each OVP card
           ovps.map(function(ovp,oi){

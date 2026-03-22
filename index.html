@@ -1959,7 +1959,7 @@ function Dash(p){
           var aImp={};aStrs.forEach(function(x){(x.data.impatto||[]).forEach(function(i){aImp[i]=(aImp[i]||0)+1})});
           var aRisk=aOprs.filter(function(x){return x.data.rischio==="si"}).length;
           var aPeso=0;aStrs.forEach(function(x){aPeso+=parseFloat(x.data.peso)||0});
-          var aNat={};aOprs.forEach(function(x){var n=x.data.natura;if(n){var dim=n.split(" - ")[0];aNat[dim]=(aNat[dim]||0)+1}});
+          var aNat={};aOprs.forEach(function(x){var n=x.data.natura;if(!n)return;var items=Array.isArray(n)?n:(typeof n==="string"?[n]:[]);items.forEach(function(v){var dim=(typeof v==="string"?v.split(" - ")[0]:v)||"Altro";aNat[dim]=(aNat[dim]||0)+1})});
           var aIndOK=a.items.filter(function(x){return x.data.indicatore&&x.data.indicatore.trim()}).length;
 
           return h("div",{key:ac,style:{marginBottom:14,borderLeft:"3px solid #003366",paddingLeft:10}},
@@ -2003,7 +2003,7 @@ function Dash(p){
           // STR impatto
           var sImp={};sStrs.forEach(function(x){(x.data.impatto||[]).forEach(function(i){sImp[i]=(sImp[i]||0)+1})});
           // OPR natura
-          var sNat={};sOprs.forEach(function(x){var n=x.data.natura;if(n){var dim=n.split(" - ")[0];sNat[dim]=(sNat[dim]||0)+1}});
+          var sNat={};sOprs.forEach(function(x){var n=x.data.natura;if(!n)return;var items=Array.isArray(n)?n:(typeof n==="string"?[n]:[]);items.forEach(function(v){var dim=(typeof v==="string"?v.split(" - ")[0]:v)||"Altro";sNat[dim]=(sNat[dim]||0)+1})});
           // OPR risultati
           var risOK=sOprs.filter(function(x){return(x.data.ris2026&&x.data.ris2026.trim())||(x.data.ris2027&&x.data.ris2027.trim())||(x.data.ris2028&&x.data.ris2028.trim())}).length;
 

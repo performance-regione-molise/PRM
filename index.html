@@ -977,17 +977,24 @@ window._mkPDFweb = function(en,targetDoc,noSave){
     doc.rect(mx,y,mxR-mx,5,"F");
     doc.setTextColor(255);doc.setFontSize(7);doc.setFont(undefined,"bold");
     doc.text(title,mx+3,y+3.5);y+=6;
-    // Rows
-    doc.setTextColor(0);doc.setFont(undefined,"normal");doc.setFontSize(6.5);
+    // Rows with text wrapping
+    doc.setTextColor(0);doc.setFontSize(6.5);
+    var labelW=50; // label column width
+    var valX=mx+labelW+3; // value X start
+    var valMaxW=mxR-valX-2; // max width for value text
     rows.forEach(function(r){
       if(y>H-12){doc.addPage();y=10;}
       doc.setFont(undefined,"bold");doc.text(r[0]+":",mx+2,y+3);
       doc.setFont(undefined,"normal");
       var val=String(r[1]||"-");
-      if(val.length>120)val=val.substring(0,120)+"...";
-      doc.text(val,mx+55,y+3);
-      doc.setDrawColor(230);doc.line(mx,y+4.5,mxR,y+4.5);
-      y+=5.5;
+      // Split text to fit available width
+      var lines=doc.splitTextToSize(val,valMaxW);
+      var rowH=Math.max(5.5,lines.length*3.5+1.5);
+      // Check page break with calculated height
+      if(y+rowH>H-8){doc.addPage();y=10;doc.setFont(undefined,"bold");doc.text(r[0]+":",mx+2,y+3);doc.setFont(undefined,"normal")}
+      doc.text(lines,valX,y+3);
+      doc.setDrawColor(230);doc.line(mx,y+rowH,mxR,y+rowH);
+      y+=rowH;
     });
     y+=3;
   };

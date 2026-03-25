@@ -1432,12 +1432,22 @@ function CG(p){return h("div",{style:{display:"grid",gridTemplateColumns:"repeat
 // Password cell with eye toggle
 function PwdCell(p){
   var _s=useState(false),show=_s[0],setShow=_s[1];
+  var _e=useState(false),editing=_e[0],setEditing=_e[1];
+  var _v=useState(""),newPwd=_v[0],setNewPwd=_v[1];
   var pwd=p.pwd,migrated=p.migrated;
-  if(migrated)return h("span",{style:{color:"#b8860b",fontSize:11}},"(pwd precedente)");
-  if(!pwd)return h("span",{style:{color:"#999",fontSize:11}},"(no pwd)");
+  if(editing)return h("div",{style:{display:"flex",alignItems:"center",gap:3}},
+    h("input",{style:{width:80,padding:"2px 4px",fontSize:11,border:"1.5px solid #e67e22",borderRadius:3},value:newPwd,onChange:function(e){setNewPwd(e.target.value)},placeholder:"nuova pwd"}),
+    h("button",{onClick:function(){if(newPwd.trim()){if(p.onSave)p.onSave(newPwd.trim());setEditing(false)}},style:{padding:"2px 6px",fontSize:9,background:"#008758",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"OK"),
+    h("button",{onClick:function(){setEditing(false)},style:{padding:"2px 6px",fontSize:9,background:"#999",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"X")
+  );
+  if(!pwd||migrated)return h("div",{style:{display:"flex",alignItems:"center",gap:4}},
+    h("span",{style:{color:"#b8860b",fontSize:11}},migrated?"(pwd precedente)":"(no pwd)"),
+    h("button",{onClick:function(){setEditing(true)},style:{padding:"2px 6px",fontSize:9,background:"#e67e22",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"Imposta")
+  );
   return h("div",{style:{display:"flex",alignItems:"center",gap:4}},
     h("span",{style:{fontFamily:"monospace",fontSize:11,color:"#d9364f",minWidth:60}},show?pwd:"********"),
-    h("button",{onClick:function(){setShow(!show)},style:{background:"none",border:"1px solid #d9dadb",borderRadius:3,cursor:"pointer",padding:"1px 6px",fontSize:9,color:"#5c6f82"}},show?"Nascondi":"Mostra")
+    h("button",{onClick:function(){setShow(!show)},style:{background:"none",border:"1px solid #d9dadb",borderRadius:3,cursor:"pointer",padding:"1px 6px",fontSize:9,color:"#5c6f82"}},show?"Nascondi":"Mostra"),
+    h("button",{onClick:function(){setEditing(true)},style:{padding:"2px 6px",fontSize:9,background:"#e67e22",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"Cambia")
   );
 }
 // ═══ STRATEGIC FORM ═══
@@ -2489,7 +2499,7 @@ function App(){
     for(var i=0;i<users.length;i++){if(users[i].name===forgotName.trim())found=users[i]}
     if(!found){setFPS("Utente non trovato. Verifica il nome inserito.");return}
     if(!found.email){setFPS("Nessuna email associata a questo utente. Contatta l'amministratore.");return}
-    if(!found.pwd||found.pwd==="(migrato)"){setFPS("Password non disponibile. Contatta l'amministratore.");return}
+    if(!found.pwd||found.pwd==="(migrato)"){setFPS("Password non ancora impostata. L'amministratore puo impostarla dal pannello Utenti e inviartela via email.");return}
     setFPS("Invio in corso...");
     window._sendEmail(found.name,found.email,found.pwd,function(ok,err){
       if(ok) setFPS("Email inviata a "+found.email+"! Controlla anche lo spam.");
@@ -2852,14 +2862,18 @@ function App(){
                       }
                     })
                   ),
-                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1"}},h(PwdCell,{pwd:u.pwd,migrated:u.pwd==="(migrato)"})),
+                  h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1"}},h(PwdCell,{pwd:u.pwd,migrated:u.pwd==="(migrato)",onSave:function(newPwd){
+                    var hash=0;for(var ci=0;ci<newPwd.length;ci++){hash=((hash<<5)-hash)+newPwd.charCodeAt(ci);hash|=0}
+                    var updated=users.map(function(x){if(x.name===u.name)return Object.assign({},x,{pwd:newPwd,hash:String(Math.abs(hash))});return x});
+                    saveUsers(updated);flash("Password aggiornata per "+u.name);
+                  }}))
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.registered?new Date(u.registered).toLocaleString("it-IT"):"-"),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.lastLogin?new Date(u.lastLogin).toLocaleString("it-IT"):"-"),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontWeight:700}},uSubs.length),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:10}},Object.keys(uSvcs).join(", ")||"-"),
                   h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #e8ecf1",whiteSpace:"nowrap"}},
                     u.email&&u.pwd&&u.pwd!=="(migrato)"?h("button",{onClick:function(){
-                      if(!confirm("Inviare la password a "+u.email+"?"))return;
+                      if(!confirm("Inviare la password '"+u.pwd+"' a "+u.email+"?"))return;
                       window._sendEmail(u.name,u.email,u.pwd,function(ok,err){
                         if(ok)flash("Email inviata a "+u.email);else flash("Errore: "+(err||"invio fallito"),"err");
                       });

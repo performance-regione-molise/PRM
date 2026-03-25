@@ -66,6 +66,23 @@ window._loadDeletedIds = function(callback){
   });
 };
 window._isDeleted = function(id){return !!window._deletedIds[id]};
+
+// ── Lista utenti eliminati dall'admin ──
+window._deletedUserNames = {};
+try{var du=JSON.parse(localStorage.getItem("ppo_deleted_users")||"[]");du.forEach(function(n){window._deletedUserNames[n]=true})}catch(e){}
+window._addDeletedUser = function(name){
+  window._deletedUserNames[name]=true;
+  var arr=Object.keys(window._deletedUserNames);
+  try{localStorage.setItem("ppo_deleted_users",JSON.stringify(arr))}catch(e){}
+  // Also save to cloud via users metadata
+  window._cloudGet({action:"loadUsers"},function(cloud){
+    if(!cloud||!Array.isArray(cloud))return;
+    // Remove the user from cloud too
+    var filtered=cloud.filter(function(u){return u.name!==name});
+    window._cloudSaveUsers(filtered);
+  });
+};
+window._isDeletedUser = function(name){return !!window._deletedUserNames[name]};
 window._filterDeleted = function(arr){return arr.filter(function(e){return e&&e.id&&!window._deletedIds[e.id]});};
 
 // ── Encode/Decode per URL (supporta UTF-8) ──
@@ -359,15 +376,15 @@ window._startAutoSync=function(){
         }
       });
     });
-    // ── Auto-sync UTENTI (solo pull) ──
+    // ── Auto-sync UTENTI (solo pull, skip deleted) ──
     window._cloudGet({action:"loadUsers"},function(cloudUsers){
       if(!cloudUsers||!Array.isArray(cloudUsers))return;
       var localUsers=[];try{localUsers=JSON.parse(localStorage.getItem("ppo_users")||"[]")}catch(e){}
       var byName={};
-      cloudUsers.forEach(function(u){if(u&&u.name)byName[u.name]=u});
+      cloudUsers.forEach(function(u){if(u&&u.name&&!window._isDeletedUser(u.name))byName[u.name]=u});
       var changed=false;
       localUsers.forEach(function(u){
-        if(!u||!u.name)return;
+        if(!u||!u.name||window._isDeletedUser(u.name))return;
         if(!byName[u.name]){byName[u.name]=u;changed=true}
         else{
           var cu=byName[u.name];
@@ -2323,6 +2340,11 @@ function App(){
   var _ae=useState(""),authErr=_ae[0],setAE=_ae[1];
   var _pa=useState(null),pendingAction=_pa[0],setPA=_pa[1];
   var _fp=useState(false),forgotMode=_fp[0],setFP=_fp[1];
+  var _cpw=useState(false),showChgPwd=_cpw[0],setShowChgPwd=_cpw[1];
+  var _cpOld=useState(""),cpOld=_cpOld[0],setCpOld=_cpOld[1];
+  var _cpNew=useState(""),cpNew=_cpNew[0],setCpNew=_cpNew[1];
+  var _cpConf=useState(""),cpConf=_cpConf[0],setCpConf=_cpConf[1];
+  var _cpMsg=useState(""),cpMsg=_cpMsg[0],setCpMsg=_cpMsg[1];
   var _fpn=useState(""),forgotName=_fpn[0],setFPN=_fpn[1];
   var _fps=useState(""),forgotStatus=_fps[0],setFPS=_fps[1];
   // Current session author (saved after credential check)
@@ -2399,8 +2421,9 @@ function App(){
         if(d&&Array.isArray(d)&&d.length){
           // Merge: cloud + local by name, keep the one with more info
           var byName={};
-          d.forEach(function(u){byName[u.name]=u});
+          d.forEach(function(u){if(!window._isDeletedUser(u.name))byName[u.name]=u});
           users.forEach(function(u){
+            if(window._isDeletedUser(u.name))return; // Skip deleted users
             if(!byName[u.name]){
               byName[u.name]=u; // local-only user, add
             }else{
@@ -2689,6 +2712,7 @@ function App(){
         h("nav",{style:{display:"flex",gap:3}},
           h("button",{onClick:function(){setV("select")},style:{padding:"6px 12px",borderRadius:3,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:v==="select"||v==="service"||v==="form"?"rgba(200,168,76,.2)":"transparent",color:v==="select"||v==="service"||v==="form"?"#c8a84c":"rgba(255,255,255,.5)"}},"Compilazione"),
           h("button",{onClick:function(){if(logged)setV("archive");else setV("login")},style:{padding:"6px 12px",borderRadius:3,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:v==="archive"||v==="login"?"rgba(200,168,76,.2)":"transparent",color:v==="archive"||v==="login"?"#c8a84c":"rgba(255,255,255,.5)"}},logged?"Archivio ("+subs.length+")":"Archivio"),
+          curAuthor&&curAuthor!=="admin"?h("button",{onClick:function(){setShowChgPwd(true);setCpOld("");setCpNew("");setCpConf("");setCpMsg("")},style:{padding:"4px 8px",borderRadius:3,border:"1px solid rgba(255,255,255,.2)",cursor:"pointer",fontSize:10,background:"transparent",color:"rgba(255,255,255,.6)",marginRight:2}},"Cambia pwd"):null,
           logged?h("button",{onClick:function(){setLogged(false);setV("select")},style:{padding:"4px 8px",borderRadius:3,border:"1px solid rgba(255,255,255,.2)",cursor:"pointer",fontSize:10,background:"transparent",color:"rgba(255,255,255,.4)"}},"Esci"):null,
           h("button",{onClick:function(){window._forceSync()},style:{padding:"4px 8px",borderRadius:3,border:"none",cursor:"pointer",fontSize:10,background:syncing?"#e67e22":isCloudOK?"#008758":"#d9364f",color:"#fff",marginLeft:4}},syncing?"Sync...":isCloudOK?"Cloud OK":"Locale")
         )
@@ -2698,6 +2722,46 @@ function App(){
     h("main",{style:{maxWidth:1080,margin:"0 auto",padding:"16px 14px 40px",flex:1,width:"100%"}},
 
       // Cloud config warning
+
+      // ── CHANGE PASSWORD MODAL ──
+      showChgPwd?h("div",{style:{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center"},onClick:function(e){if(e.target===e.currentTarget)setShowChgPwd(false)}},
+        h("div",{style:{background:"#fff",borderRadius:8,padding:24,width:340,maxWidth:"90vw",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}},
+          h("div",{style:{fontWeight:700,fontSize:16,color:"#003366",marginBottom:16,textAlign:"center"}},"Cambia Password"),
+          h("div",{style:{marginBottom:10}},
+            h("label",{style:{fontSize:11,fontWeight:600,display:"block",marginBottom:3}},"Password attuale"),
+            h("input",{type:"password",style:IS,value:cpOld,onChange:function(e){setCpOld(e.target.value)}})
+          ),
+          h("div",{style:{marginBottom:10}},
+            h("label",{style:{fontSize:11,fontWeight:600,display:"block",marginBottom:3}},"Nuova password"),
+            h("input",{type:"password",style:IS,value:cpNew,onChange:function(e){setCpNew(e.target.value)}})
+          ),
+          h("div",{style:{marginBottom:14}},
+            h("label",{style:{fontSize:11,fontWeight:600,display:"block",marginBottom:3}},"Conferma nuova password"),
+            h("input",{type:"password",style:IS,value:cpConf,onChange:function(e){setCpConf(e.target.value)}})
+          ),
+          cpMsg?h("div",{style:{padding:"6px 10px",marginBottom:10,borderRadius:4,fontSize:11,fontWeight:600,background:cpMsg.indexOf("OK")>=0?"#e6f4ed":"#fff0f0",color:cpMsg.indexOf("OK")>=0?"#008758":"#d9364f"}},cpMsg):null,
+          h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+            h("button",{onClick:function(){setShowChgPwd(false)},style:{padding:"8px 16px",background:"#f0f0f0",border:"none",borderRadius:4,cursor:"pointer",fontSize:12}},"Annulla"),
+            h("button",{onClick:function(){
+              if(!cpOld.trim()){setCpMsg("Inserisci la password attuale");return}
+              if(!cpNew.trim()){setCpMsg("Inserisci la nuova password");return}
+              if(cpNew.length<4){setCpMsg("La nuova password deve avere almeno 4 caratteri");return}
+              if(cpNew!==cpConf){setCpMsg("Le password non coincidono");return}
+              // Verify current password
+              var me=users.filter(function(u){return u.name===curAuthor})[0];
+              if(!me){setCpMsg("Utente non trovato");return}
+              if(me.pwd!==cpOld){setCpMsg("Password attuale non corretta");return}
+              // Update password
+              var newHash=0;for(var ci=0;ci<cpNew.length;ci++){newHash=((newHash<<5)-newHash)+cpNew.charCodeAt(ci);newHash|=0}
+              var updated=users.map(function(u){if(u.name===curAuthor)return Object.assign({},u,{pwd:cpNew,hash:String(Math.abs(newHash))});return u});
+              saveUsers(updated);
+              setCH(String(Math.abs(newHash)));
+              setCpMsg("OK! Password modificata con successo");
+              setTimeout(function(){setShowChgPwd(false)},1500);
+            },style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}},"Conferma")
+          )
+        )
+      ):null,
       !isCloudOK?h("div",{style:{background:"#fef2f4",border:"2px solid #d9364f",borderRadius:4,padding:"12px 16px",marginBottom:14,fontSize:12,color:"#721c24"}},
         h("div",{style:{fontWeight:700,fontSize:14,marginBottom:4}},"ATTENZIONE: I dati NON sono condivisi tra utenti diversi!"),
         h("div",null,"I dati sono salvati solo su QUESTO browser. Se un altro utente apre la pagina da un altro computer, non vedra nulla."),
@@ -2896,8 +2960,9 @@ function App(){
                     h("button",{onClick:function(){
                       if(uSubs.length>0){alert("Impossibile eliminare: "+u.name+" ha "+uSubs.length+" schede. Riassegnale prima.");return}
                       if(!confirm("Eliminare l'utente '"+u.name+"'?"))return;
+                      window._addDeletedUser(u.name);
                       var upd=users.filter(function(x){return x.name!==u.name});
-                      saveUsers(upd);flash("Utente "+u.name+" eliminato");
+                      saveUsers(upd);flash("Utente "+u.name+" eliminato definitivamente");
                     },style:{padding:"3px 6px",fontSize:9,background:"#d9364f",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"Elimina")
                   )
                 );

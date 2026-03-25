@@ -2866,7 +2866,7 @@ function App(){
                     var hash=0;for(var ci=0;ci<newPwd.length;ci++){hash=((hash<<5)-hash)+newPwd.charCodeAt(ci);hash|=0}
                     var updated=users.map(function(x){if(x.name===u.name)return Object.assign({},x,{pwd:newPwd,hash:String(Math.abs(hash))});return x});
                     saveUsers(updated);flash("Password aggiornata per "+u.name);
-                  }}))
+                  }})),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.registered?new Date(u.registered).toLocaleString("it-IT"):"-"),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontSize:11}},u.lastLogin?new Date(u.lastLogin).toLocaleString("it-IT"):"-"),
                   h("td",{style:{padding:"5px 10px",borderBottom:"1px solid #e8ecf1",fontWeight:700}},uSubs.length),

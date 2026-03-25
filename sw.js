@@ -1,5 +1,5 @@
-// Service Worker — PPO Molise PWA v2
-var CACHE_NAME = 'ppo-molise-v2';
+// Service Worker — PPO Molise PWA v3
+var CACHE_NAME = 'ppo-molise-v3';
 var URLS_TO_CACHE = [
   './',
   './index.html',
@@ -33,11 +33,13 @@ self.addEventListener('activate', function(e) {
 });
 
 self.addEventListener('fetch', function(e) {
-  if (e.request.url.indexOf('script.google.com') >= 0) {
-    e.respondWith(fetch(e.request));
-    return;
-  }
-  // NETWORK FIRST for HTML pages (always get latest)
+  // Only handle http/https requests — skip chrome-extension, etc.
+  if (!e.request.url.startsWith('http')) return;
+
+  // Skip API calls
+  if (e.request.url.indexOf('script.google.com') >= 0) return;
+
+  // NETWORK FIRST for HTML pages
   if (e.request.url.indexOf('.html') >= 0 || e.request.mode === 'navigate') {
     e.respondWith(
       fetch(e.request).then(function(response) {

@@ -74,14 +74,30 @@ window._addDeletedUser = function(name){
   window._deletedUserNames[name]=true;
   var arr=Object.keys(window._deletedUserNames);
   try{localStorage.setItem("ppo_deleted_users",JSON.stringify(arr))}catch(e){}
-  // Also save to cloud via users metadata
+  // Save deleted user name to cloud "deleted" sheet (reuse entry mechanism)
+  window._cloudGet({action:"addDeleted",id:"USER_"+name},function(){});
+  // Also remove from cloud users
   window._cloudGet({action:"loadUsers"},function(cloud){
     if(!cloud||!Array.isArray(cloud))return;
-    // Remove the user from cloud too
     var filtered=cloud.filter(function(u){return u.name!==name});
     window._cloudSaveUsers(filtered);
   });
 };
+// Load deleted users from cloud on startup
+window._loadDeletedUsers = function(){
+  if(!window.API_URL)return;
+  window._cloudGet({action:"loadDeleted"},function(ids){
+    if(!ids||!Array.isArray(ids))return;
+    ids.forEach(function(id){
+      if(typeof id==="string"&&id.indexOf("USER_")===0){
+        var name=id.substring(5);
+        window._deletedUserNames[name]=true;
+      }
+    });
+    try{localStorage.setItem("ppo_deleted_users",JSON.stringify(Object.keys(window._deletedUserNames)))}catch(e){}
+  });
+};
+setTimeout(function(){window._loadDeletedUsers()},3000);
 window._isDeletedUser = function(name){return !!window._deletedUserNames[name]};
 window._filterDeleted = function(arr){return arr.filter(function(e){return e&&e.id&&!window._deletedIds[e.id]});};
 
@@ -377,9 +393,18 @@ window._startAutoSync=function(){
       });
     });
     // ── Auto-sync UTENTI (solo pull, skip deleted) ──
+    // First refresh deleted users from cloud
+    window._loadDeletedUsers&&window._loadDeletedUsers();
     window._cloudGet({action:"loadUsers"},function(cloudUsers){
       if(!cloudUsers||!Array.isArray(cloudUsers))return;
       var localUsers=[];try{localUsers=JSON.parse(localStorage.getItem("ppo_users")||"[]")}catch(e){}
+      // Remove any deleted users from local
+      var cleanLocal=localUsers.filter(function(u){return !window._isDeletedUser(u.name)});
+      if(cleanLocal.length<localUsers.length){
+        try{localStorage.setItem("ppo_users",JSON.stringify(cleanLocal))}catch(e){}
+        window.dispatchEvent(new Event("usersChanged"));
+        localUsers=cleanLocal;
+      }
       var byName={};
       cloudUsers.forEach(function(u){if(u&&u.name&&!window._isDeletedUser(u.name))byName[u.name]=u});
       var changed=false;
@@ -1172,19 +1197,22 @@ window._exportPacchetto=function(){
         if(!svcEntries.length)return;
         if(iy>190){doc.addPage("a4","landscape");iy=15}
         doc.setFont(undefined,"bold");doc.setFontSize(8);
-        doc.text(sv.code+" - "+sv.name.substring(0,85),14,iy);iy+=4;
+        var svLines=doc.splitTextToSize(sv.code+" - "+sv.name,260);
+        doc.text(svLines,14,iy);iy+=svLines.length*3.5+1;
         doc.setFont(undefined,"normal");doc.setFontSize(7);
         svcEntries.forEach(function(e){
           if(iy>195){doc.addPage("a4","landscape");iy=15}
           var pre=e.type==="strategic"?"STR":"OPR";
-          var txt="    "+pre+": "+(e.data.codice||"")+" - "+(e.data.nome||"").substring(0,75);
+          var txt="    "+pre+": "+(e.data.codice||"")+" - "+(e.data.nome||"");
           var idxInSorted=sorted.indexOf(e);
           // Store link position for later
           linkMap.push({page:doc.getNumberOfPages(),x:20,y:iy-2.5,idx:idxInSorted});
+          var entryLines=doc.splitTextToSize(txt,255);
+          if(iy+entryLines.length*3>195){doc.addPage("a4","landscape");iy=15}
           doc.setTextColor(0,51,153);
-          doc.text(txt,20,iy);
+          doc.text(entryLines,20,iy);
           doc.setTextColor(0);
-          iy+=3.5;
+          iy+=entryLines.length*3+0.5;
           entryIdx++;
         });
         iy+=2;
@@ -2392,11 +2420,11 @@ function App(){
     var doMigrate=function(currentUsers,currentSubs){
       // Extract unique authors from existing entries
       var byName={};
-      currentUsers.forEach(function(u){byName[u.name]=u});
+      currentUsers.forEach(function(u){if(!window._isDeletedUser(u.name))byName[u.name]=u});
       var changed=false;
       currentSubs.forEach(function(e){
         var name=e.author||e.createdBy;
-        if(!name||name==="admin")return;
+        if(!name||name==="admin"||window._isDeletedUser(name))return;
         if(!byName[name]){
           byName[name]={
             name:name,

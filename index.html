@@ -169,18 +169,50 @@ window._save = function(s){
 };
 
 // ── Save single entry to cloud (add or update) ──
+// ── Compress entry: rimuovi campi vuoti per ridurre payload ──
+window._compressEntry = function(entry){
+  var clean={};
+  Object.keys(entry).forEach(function(k){
+    var v=entry[k];
+    if(v===""||v===null||v===undefined)return;
+    if(Array.isArray(v)&&v.length===0)return;
+    if(k==="data"&&typeof v==="object"){
+      var cd={};Object.keys(v).forEach(function(dk){
+        var dv=v[dk];if(dv===""||dv===null||dv===undefined)return;
+        if(Array.isArray(dv)&&dv.length===0)return;
+        cd[dk]=dv;
+      });
+      clean[k]=cd;
+    }else if(k==="modifications"&&Array.isArray(v)&&v.length>5){
+      clean[k]=v.slice(-5); // Keep only last 5 modifications
+    }else{
+      clean[k]=v;
+    }
+  });
+  return clean;
+};
+
 window._cloudSaveEntry = function(entry){
   if(!window.API_URL||!entry)return;
-  if(window._isDeleted(entry.id))return; // Non ri-pushare schede eliminate
-  window._pushedIds[entry.id]=true; // Track as pushed
+  if(window._isDeleted(entry.id))return;
+  window._pushedIds[entry.id]=true;
   window._syncing=true;
   window.dispatchEvent(new Event("syncStatus"));
-  var b64=window._b64(JSON.stringify(entry));
-  // Check URL length (limit ~8000 chars)
+  // Compress: strip empty fields
+  var compressed=window._compressEntry(entry);
+  var b64=window._b64(JSON.stringify(compressed));
   var testUrl=window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b64);
-  if(testUrl.length>7500){
-    console.warn("[CLOUD] Entry "+entry.id+" troppo grande per GET ("+testUrl.length+" chars), uso bulkSave");
-    window._cloudBulkPush([entry]);
+  if(testUrl.length>7800){
+    // Still too big — try harder: truncate long text fields
+    var d=compressed.data||{};
+    Object.keys(d).forEach(function(k){if(typeof d[k]==="string"&&d[k].length>500)d[k]=d[k].substring(0,500)});
+    compressed.data=d;
+    b64=window._b64(JSON.stringify(compressed));
+    testUrl=window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b64);
+  }
+  if(testUrl.length>7800){
+    console.error("[CLOUD] Entry "+entry.id+" troppo grande anche dopo compressione ("+testUrl.length+" chars). Impossibile salvare via GET.");
+    window._syncing=false;
     return;
   }
   window._saveQueue.push({params:{action:"upsert",id:entry.id,data:b64},id:entry.id,retries:0});
@@ -199,11 +231,30 @@ window._cloudDeleteEntry = function(id){
 // ── Bulk push: invia più entries in un colpo (merge lato server con lock) ──
 window._cloudBulkPush = function(entries){
   if(!window.API_URL||!entries||!entries.length)return;
-  // If single entry, use upsert directly (avoids infinite recursion)
-  if(entries.length===1){window._cloudSaveEntry(entries[0]);return}
-  var b64=window._b64(JSON.stringify(entries));
+  // For single entries, send directly via upsert (not through _cloudSaveEntry to avoid loop)
+  if(entries.length===1){
+    var e=entries[0];
+    if(!e||!e.id||window._isDeleted(e.id))return;
+    window._pushedIds[e.id]=true;
+    var compressed=window._compressEntry(e);
+    var b64=window._b64(JSON.stringify(compressed));
+    var testUrl=window.API_URL+"?action=upsert&id="+e.id+"&data="+encodeURIComponent(b64);
+    if(testUrl.length>7800){
+      // Truncate long fields
+      var d=compressed.data||{};
+      Object.keys(d).forEach(function(k){if(typeof d[k]==="string"&&d[k].length>500)d[k]=d[k].substring(0,500)});
+      compressed.data=d;
+      b64=window._b64(JSON.stringify(compressed));
+    }
+    window._saveQueue.push({params:{action:"upsert",id:e.id,data:b64},id:e.id,retries:0});
+    window._processQueue();
+    return;
+  }
+  // Compress all entries
+  var compressedArr=entries.map(function(e){return window._compressEntry(e)});
+  var b64=window._b64(JSON.stringify(compressedArr));
   var testUrl=window.API_URL+"?action=bulkSave&data="+encodeURIComponent(b64);
-  if(testUrl.length>7500){
+  if(testUrl.length>7800){
     var half=Math.ceil(entries.length/2);
     window._cloudBulkPush(entries.slice(0,half));
     window._cloudBulkPush(entries.slice(half));

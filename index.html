@@ -199,10 +199,11 @@ window._cloudDeleteEntry = function(id){
 // ── Bulk push: invia più entries in un colpo (merge lato server con lock) ──
 window._cloudBulkPush = function(entries){
   if(!window.API_URL||!entries||!entries.length)return;
+  // If single entry, use upsert directly (avoids infinite recursion)
+  if(entries.length===1){window._cloudSaveEntry(entries[0]);return}
   var b64=window._b64(JSON.stringify(entries));
   var testUrl=window.API_URL+"?action=bulkSave&data="+encodeURIComponent(b64);
   if(testUrl.length>7500){
-    // Split in chunks
     var half=Math.ceil(entries.length/2);
     window._cloudBulkPush(entries.slice(0,half));
     window._cloudBulkPush(entries.slice(half));
@@ -1233,11 +1234,15 @@ window._exportPacchetto=function(){
         doc=mkFn(entry,doc,true);
         entryPages[i]=pageBefore+1; // the entry starts on the next page after addPage
       });
-      // Go back and add clickable links on index pages
+      // Go back and add clickable links + page numbers on index pages
       linkMap.forEach(function(lnk){
         if(lnk.idx>=0&&lnk.idx<entryPages.length){
           doc.setPage(lnk.page);
           doc.link(lnk.x,lnk.y,200,3.5,{pageNumber:entryPages[lnk.idx]});
+          // Add page number on the right
+          doc.setFontSize(6);doc.setFont(undefined,"normal");doc.setTextColor(100);
+          doc.text("pag. "+entryPages[lnk.idx],285,lnk.y+2.5,{align:"right"});
+          doc.setTextColor(0);
         }
       });
       // Add "X di N" page numbers
@@ -1250,9 +1255,25 @@ window._exportPacchetto=function(){
       doc.save(filename);
     }catch(e){console.error("PDF:",e);alert("Errore PDF: "+e.message)}
   };
-  doExportPDF(sorted,window._mkPDF,"Pacchetto_Formale_"+new Date().toISOString().slice(0,10)+".pdf");
-  doExportPDF(sorted,window._mkPDFweb,"Pacchetto_Web_"+new Date().toISOString().slice(0,10)+".pdf");
-  alert("Esportazione completata!\n\n- 1 Excel riepilogo\n- 1 PDF Formale ("+sorted.length+" schede)\n- 1 PDF Web ("+sorted.length+" schede)\n\nOrdinati per Servizio, con indice cliccabile");
+  // Store sorted for separate calls
+  window._lastSorted=sorted;
+  window._doExportPDF=doExportPDF;
+  // Excel only
+  alert("Excel scaricato! ("+sorted.length+" schede)\nUsa i pulsanti PDF Formale o PDF Web per i PDF.");
+};
+
+// Separate PDF export functions
+window._exportPDFformale=function(){
+  var sorted=window._lastSorted;
+  if(!sorted||!sorted.length){alert("Esporta prima il pacchetto Excel");return}
+  window._doExportPDF(sorted,window._mkPDF,"Pacchetto_Formale_"+new Date().toISOString().slice(0,10)+".pdf");
+  alert("PDF Formale scaricato! ("+sorted.length+" schede)");
+};
+window._exportPDFweb=function(){
+  var sorted=window._lastSorted;
+  if(!sorted||!sorted.length){alert("Esporta prima il pacchetto Excel");return}
+  window._doExportPDF(sorted,window._mkPDFweb,"Pacchetto_Web_"+new Date().toISOString().slice(0,10)+".pdf");
+  alert("PDF Web scaricato! ("+sorted.length+" schede)");
 };
 
 // Esporta Alberatura OVP > STR > OPR
@@ -1676,6 +1697,13 @@ function Dash(p){
   var covSet={};s.forEach(function(x){covSet[x.serviceCode]=true});
   var covN=Object.keys(covSet).length;
   var cvp=allSvc.length?Math.round(covN/allSvc.length*100):0;
+  // Aree coperte: conta solo aree definite in AREAS
+  var validAreaCodes={};window.AREAS.forEach(function(a){validAreaCodes[a.code]=true});
+  var areeCoperte={};s.forEach(function(x){if(validAreaCodes[x.areaCode])areeCoperte[x.areaCode]=true});
+  var areeExtra={};s.forEach(function(x){if(!validAreaCodes[x.areaCode])areeExtra[x.areaCode]=(areeExtra[x.areaCode]||0)+1});
+  // Servizi non coperti
+  var svcNonCop=allSvc.filter(function(code){return!covSet[code]});
+  var svcCop=allSvc.filter(function(code){return!!covSet[code]});
 
   // Pesi medi
   var pesoS=0,cntPS=0,pesoO=0,cntPO=0;
@@ -1753,8 +1781,14 @@ function Dash(p){
       kpi(pct2(baseOK,s.length),"Con Baseline",baseOK===s.length?"#008758":"#d9364f",baseOK+"/"+s.length),
       kpi(pct2(fonteOK,s.length),"Con Fonte",fonteOK===s.length?"#008758":"#d9364f",fonteOK+"/"+s.length),
       kpi(svcOK+"/"+(svcOK+svcKO),"Servizi Peso=100%",svcKO===0?"#008758":"#d9364f"),
-      kpi(Object.keys(ac).length+"/"+window.AREAS.length,"Aree Coperte","#b8860b")
+      kpi(Object.keys(areeCoperte).length+"/"+window.AREAS.length,"Aree Coperte",Object.keys(areeCoperte).length>=window.AREAS.length?"#008758":"#b8860b")
     ),
+    // ── ALERT se ci sono areeExtra ──
+    Object.keys(areeExtra).length?h("div",{className:"cd",style:{padding:10,marginBottom:12,background:"#fff3cd",borderLeft:"4px solid #e67e22"}},
+      h("div",{style:{fontWeight:700,fontSize:12,color:"#e67e22",marginBottom:4}},"Attenzione: "+Object.keys(areeExtra).length+" codici area non riconosciuti nelle schede"),
+      h("div",{style:{fontSize:11}},Object.keys(areeExtra).map(function(k){return k+" ("+areeExtra[k]+" schede)"}).join(", ")),
+      h("div",{style:{fontSize:10,color:"#856404",marginTop:4}},"Questi codici area non corrispondono a nessuna delle "+window.AREAS.length+" aree definite. Verificare i dati delle schede.")
+    ):null,
 
     // ── DISTRIBUZIONE PER AREA + SERVIZIO ──
     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}},
@@ -1765,6 +1799,43 @@ function Dash(p){
       h("div",{className:"cd",style:{padding:12}},
         sec("Top Servizi"),
         Object.keys(sc).sort(function(a,b){return sc[b]-sc[a]}).slice(0,15).map(function(k){return bar(k,sc[k],Math.max.apply(null,Object.values(sc)),"#0066cc")})
+      )
+    ),
+
+    // ── COPERTURA SERVIZI: quali coperti, quali no ──
+    h("div",{className:"cd",style:{padding:12,marginBottom:12}},
+      sec("Copertura Servizi — "+svcCop.length+" coperti su "+allSvc.length+" totali ("+svcNonCop.length+" mancanti)"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+        h("div",null,
+          h("div",{style:{fontWeight:700,fontSize:11,color:"#008758",marginBottom:4}},"Servizi CON schede ("+svcCop.length+")"),
+          h("div",{style:{maxHeight:200,overflowY:"auto",fontSize:10}},
+            window.AREAS.map(function(area){
+              var areaSvcs=area.svcs.filter(function(sv){return covSet[sv.code]});
+              if(!areaSvcs.length)return null;
+              return h("div",{key:area.code,style:{marginBottom:4}},
+                h("div",{style:{fontWeight:700,fontSize:10,color:"#003366"}},area.code+" - "+area.name),
+                areaSvcs.map(function(sv){
+                  return h("div",{key:sv.code,style:{paddingLeft:10,color:"#008758"}},sv.code+" - "+sc[sv.code]+" schede")
+                })
+              )
+            })
+          )
+        ),
+        h("div",null,
+          h("div",{style:{fontWeight:700,fontSize:11,color:"#d9364f",marginBottom:4}},"Servizi SENZA schede ("+svcNonCop.length+")"),
+          svcNonCop.length?h("div",{style:{maxHeight:200,overflowY:"auto",fontSize:10}},
+            window.AREAS.map(function(area){
+              var missingSvcs=area.svcs.filter(function(sv){return!covSet[sv.code]});
+              if(!missingSvcs.length)return null;
+              return h("div",{key:area.code,style:{marginBottom:4}},
+                h("div",{style:{fontWeight:700,fontSize:10,color:"#003366"}},area.code+" - "+area.name),
+                missingSvcs.map(function(sv){
+                  return h("div",{key:sv.code,style:{paddingLeft:10,color:"#d9364f"}},sv.code+" - "+sv.name.substring(0,60))
+                })
+              )
+            })
+          ):h("div",{style:{color:"#008758",fontWeight:600}},"Tutti i servizi sono coperti!")
+        )
       )
     ),
 
@@ -1885,7 +1956,7 @@ function Dash(p){
         h("button",{onClick:function(){window._exportIndicatoriOPR()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Indicatori Operativi (.xlsx)"),
         h("button",{onClick:function(){window._exportPerArea()},style:{padding:"8px 16px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Riepilogo per Area (.xlsx)"),
         h("button",{onClick:function(){window._exportPerServizio()},style:{padding:"8px 16px",background:"#5c6f82",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Riepilogo per Servizio (.xlsx)"),
-        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Pacchetto (Excel + PDF)")
+        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Excel + PDF")
       )
     ),
 
@@ -2046,7 +2117,7 @@ function Dash(p){
         h("button",{onClick:function(){window._exportIndicatoriOPR()},style:{padding:"8px 16px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Indicatori Operativi (.xlsx)"),
         h("button",{onClick:function(){window._exportPerArea()},style:{padding:"8px 16px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Spaccato per Area (.xlsx)"),
         h("button",{onClick:function(){window._exportPerServizio()},style:{padding:"8px 16px",background:"#5c6f82",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Spaccato per Servizio (.xlsx)"),
-        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Esporta Pacchetto (Excel + PDF)")
+        h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:12,cursor:"pointer"}},"Esporta Excel + PDF")
       )
     ),
 
@@ -2907,7 +2978,9 @@ function App(){
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},
           h("div",null,h("h1",{style:{fontFamily:"Lora,serif",fontSize:18,fontWeight:700}},"Pannello Admin"),h("p",{style:{color:"#5c6f82",fontSize:11}},subs.length+" schede | "+users.length+" utenti registrati")),
           h("div",{style:{display:"flex",gap:4}},
-            h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"8px 16px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Esporta Pacchetto (Excel + PDF Formale + PDF Web)"),
+            h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"6px 12px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"Excel Riepilogo"),
+            h("button",{onClick:function(){window._exportPacchetto();setTimeout(function(){window._exportPDFformale()},500)},style:{padding:"6px 12px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"PDF Formale"),
+            h("button",{onClick:function(){window._exportPacchetto();setTimeout(function(){window._exportPDFweb()},500)},style:{padding:"6px 12px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"PDF Web"),
             h("button",{onClick:function(){window._recover()},style:{padding:"8px 16px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Recupera Dati")
           )
         ),

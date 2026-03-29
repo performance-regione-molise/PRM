@@ -3163,7 +3163,7 @@ function App(){
             h("button",{onClick:function(){window._exportPacchetto()},style:{padding:"6px 12px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"Excel Riepilogo"),
             h("button",{onClick:function(){window._exportPacchetto();setTimeout(function(){window._exportPDFformale()},500)},style:{padding:"6px 12px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"PDF Formale"),
             h("button",{onClick:function(){window._exportPacchetto();setTimeout(function(){window._exportPDFweb()},500)},style:{padding:"6px 12px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"PDF Web"),
-            h("button",{onClick:function(){window._exportReport()},style:{padding:"6px 12px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"Report Giunta"),
+            h("button",{onClick:function(){window._exportReport()},style:{padding:"6px 12px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"Report Excel"),
             h("button",{onClick:function(){window._recover()},style:{padding:"8px 16px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Recupera Dati")
           )
         ),
@@ -3310,7 +3310,7 @@ function App(){
           // Each OVP card
           ovps.map(function(ovp,oi){
             var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
-            var unlinkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef!==ovp.id});
+            var unlinkedStrs=subs.filter(function(s){return s.type==="strategic"&&(!s.data.ovpRef||s.data.ovpRef==="")});
             return h("div",{key:ovp.id,className:"cd",style:{marginBottom:14,borderLeft:"4px solid #8e44ad",overflow:"hidden"}},
               // Header
               h("div",{style:{padding:"10px 14px",background:"#f5f0fa",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
@@ -3409,8 +3409,8 @@ function App(){
                 // Currently linked
                 linkedStrs.length?h("div",{style:{marginBottom:8}},
                   linkedStrs.map(function(s){
-                    return h("div",{key:s.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:"#e8f0fe",borderRadius:3,marginBottom:3,fontSize:11}},
-                      h("span",null,h("b",null,s.data.codice)," — ",s.serviceName," — ",(s.data.nome||"").substring(0,45)),
+                    return h("div",{key:s.id,style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,padding:"6px 10px",background:"#e8f0fe",borderRadius:4,marginBottom:4,fontSize:11}},
+                      h("span",{style:{wordBreak:"break-word"}},h("b",null,s.data.codice)," — ",s.serviceName," — ",(s.data.nome||"")),
                       h("button",{onClick:function(){linkStrToOvp(s.id,"")},style:{padding:"2px 8px",fontSize:9,background:"#d9364f",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"Rimuovi")
                     )
                   })
@@ -3419,7 +3419,7 @@ function App(){
                 unlinkedStrs.length?h("div",{style:{display:"flex",gap:6}},
                   h("select",{id:"ovp_link_"+ovp.id,style:{flex:1,padding:4,fontSize:10,border:"1px solid #d9dadb",borderRadius:3}},
                     h("option",{value:""},"-- Seleziona ob. strategico da collegare --"),
-                    unlinkedStrs.map(function(s){return h("option",{key:s.id,value:s.id},s.data.codice+" — "+s.serviceName+" — "+(s.data.nome||"").substring(0,40))})
+                    unlinkedStrs.map(function(s){return h("option",{key:s.id,value:s.id},s.data.codice+" — "+s.serviceName+" — "+(s.data.nome||""))})
                   ),
                   h("button",{onClick:function(){
                     var sel=document.getElementById("ovp_link_"+ovp.id);

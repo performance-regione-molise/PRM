@@ -3653,22 +3653,22 @@ function App(){
                 }),
               ),
               // ── ASSOCIAZIONE STR ──
-              h("div",{style:{padding:"12px 14px",borderTop:"2px solid #8e44ad",background:"#faf7fc",borderRadius:"0 0 4px 0",marginTop:0}},
+              h("div",{style:{padding:"12px 14px",borderTop:"2px solid #8e44ad",background:"#faf7fc",borderRadius:"0 0 4px 0",overflow:"hidden"}},
                 h("div",{style:{fontWeight:700,fontSize:12,color:"#8e44ad",marginBottom:8}},"Associa Obiettivi Strategici a questo OVP"),
                 // Currently linked
                 linkedStrs.length?h("div",{style:{marginBottom:8}},
                   linkedStrs.map(function(s){
                     return h("div",{key:s.id,style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,padding:"6px 10px",background:"#e8f0fe",borderRadius:4,marginBottom:4,fontSize:11}},
-                      h("span",{style:{wordBreak:"break-word"}},h("b",null,s.data.codice)," — ",s.serviceName,
+                      h("span",{style:{wordBreak:"break-word",flex:1,minWidth:0}},h("b",null,s.data.codice)," — ",s.serviceName,
                         s.data.missione?h("span",{style:{color:"#8e44ad",fontSize:10}}," [M"+s.data.missione+(s.data.programma?" P"+s.data.programma:"")+"]"):null,
                         " — ",(s.data.nome||"")),
-                      h("button",{onClick:function(){linkStrToOvp(s.id,"")},style:{padding:"2px 8px",fontSize:9,background:"#d9364f",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"Rimuovi")
+                      h("button",{onClick:function(){linkStrToOvp(s.id,"")},style:{padding:"2px 8px",fontSize:9,background:"#d9364f",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",flexShrink:0}},"Rimuovi")
                     )
                   })
                 ):null,
                 // Add new link
-                unlinkedStrs.length?h("div",{style:{display:"flex",gap:8,alignItems:"center"}},
-                  h("select",{id:"ovp_link_"+ovp.id,style:{flex:1,padding:"6px 8px",fontSize:11,border:"2px solid #8e44ad",borderRadius:4,background:"#fff"}},
+                unlinkedStrs.length?h("div",{style:{display:"flex",gap:8,alignItems:"center",maxWidth:"100%"}},
+                  h("select",{id:"ovp_link_"+ovp.id,style:{flex:1,minWidth:0,padding:"6px 8px",fontSize:11,border:"2px solid #8e44ad",borderRadius:4,background:"#fff"}},
                     h("option",{value:""},"-- Seleziona ob. strategico da collegare --"),
                     unlinkedStrs.map(function(s){
                       var cur=s.data.ovpRef?"["+ovps.filter(function(o){return o.id===s.data.ovpRef}).map(function(o){return o.cod}).join("")+"] ":"";
@@ -3682,7 +3682,7 @@ function App(){
                   h("button",{onClick:function(){
                     var sel=document.getElementById("ovp_link_"+ovp.id);
                     if(sel&&sel.value)linkStrToOvp(sel.value,ovp.id);
-                  },style:{padding:"6px 16px",fontSize:12,background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontWeight:700}},"Collega")
+                  },style:{padding:"6px 16px",fontSize:12,background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontWeight:700,flexShrink:0}},"Collega")
                 ):h("div",{style:{fontSize:10,color:"#999"}},"Tutti gli ob. strategici sono gia collegati")
               )
             )

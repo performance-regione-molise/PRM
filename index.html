@@ -1446,6 +1446,119 @@ window._exportOVPpdf=function(){
 // Esporta Indicatori Dashboard
 
 // Esporta Report Strutturato per allegato a delibere di Giunta
+
+// Esporta PDF stile PIAO: Indicatori di Outcome con tabella valori + grafico
+window._exportOVPpiao=function(){
+  var ovps=window._loadOVP()||[];var subs=window._SUBS;
+  if(!ovps.length){alert("Nessun OVP definito");return}
+  var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  var W=297,H=210,mx=6;
+  // Header
+  var addHeader=function(){
+    try{doc.addImage(window.LOGO_MD,"PNG",5,3,14,14)}catch(e){}
+    doc.setTextColor(200,0,0);doc.setFontSize(10);doc.setFont(undefined,"bold","italic");
+    doc.text("Piano della Performance Organizzativa 2026-2028",22,10);
+    doc.setDrawColor(200);doc.line(mx,18,W-mx,18);
+  };
+  addHeader();
+  // Title page
+  doc.setTextColor(200,0,0);doc.setFontSize(16);doc.setFont(undefined,"bold");
+  doc.text("Indicatori di outcome",W/2,40,{align:"center"});
+  doc.setTextColor(0);doc.setFontSize(10);doc.setFont(undefined,"normal");
+  doc.text("Obiettivi di Valore Pubblico - Regione Molise",W/2,50,{align:"center"});
+  var y=60;
+  // For each OVP
+  ovps.forEach(function(ovp){
+    if(y>H-30){doc.addPage("a4","landscape");addHeader();y=24}
+    doc.setFillColor(142,68,173);doc.rect(mx,y,W-12,7,"F");
+    doc.setTextColor(255);doc.setFontSize(10);doc.setFont(undefined,"bold");
+    doc.text(ovp.cod+" - "+ovp.nome.substring(0,90),mx+3,y+5);y+=10;
+    doc.setTextColor(0);
+    // Linked STRs
+    var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
+    if(linkedStrs.length){
+      doc.setFontSize(7);doc.setFont(undefined,"bold");
+      doc.text("Obiettivi Strategici collegati:",mx+2,y+3);y+=4;
+      doc.setFont(undefined,"normal");
+      linkedStrs.forEach(function(s){
+        doc.text("  "+s.data.codice+" - "+s.serviceCode+" - "+(s.data.nome||"").substring(0,80),mx+4,y+3);y+=3.5;
+      });y+=3;
+    }
+    // Indicatori table
+    if(ovp.indicatori.length){
+      ovp.indicatori.forEach(function(ind){
+        if(y>H-50){doc.addPage("a4","landscape");addHeader();y=24}
+        // Parse tabData
+        var tbl=null;
+        try{tbl=JSON.parse(ind.tabData)}catch(e){}
+        // Header bar: "Indicatori di outcome"
+        doc.setFillColor(200,0,0);doc.rect(mx,y,W-12,6,"F");
+        doc.setTextColor(255);doc.setFontSize(9);doc.setFont(undefined,"bold");
+        doc.text("Indicatori di outcome",mx+3,y+4.2);y+=8;
+        // Build PIAO-style table
+        var tableBody=[];
+        // Row 1: Indicator info + data
+        var sigTxt=(ind.nome||"")+"\n\n"+(ind.descrInd||"");
+        var formTxt=(ind.formula||"")+"\n\nFonte: "+(ind.fonte||"-");
+        // If tabular data exists, create value rows
+        if(tbl&&tbl.headers&&tbl.rows){
+          var valHeaders=tbl.headers.slice();
+          // First row with header
+          tableBody.push([
+            {content:"Significato\nindicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:35,valign:"top"}},
+            {content:"Modalita di calcolo indicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:50,valign:"top"}},
+            {content:"Valori di riferimento",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:80,halign:"center",valign:"top"}},
+            {content:"Grafico",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55,halign:"center",valign:"top"}},
+            {content:"Valore target",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55,valign:"top"}}
+          ]);
+          // Sub-header for values columns
+          var valSubH=valHeaders.join("  |  ");
+          // Data rows
+          var valTxt=valSubH+"\n"+Array(valSubH.length).join("-")+"\n";
+          tbl.rows.forEach(function(row){valTxt+=row.join("  |  ")+"\n"});
+          var targetTxt="Baseline: "+(ind.baseline||"-")+"\nTarget 2026: "+(ind.t1||"-")+"\nTarget 2027: "+(ind.t2||"-")+"\nTarget 2028: "+(ind.t3||"-");
+          tableBody.push([
+            {content:sigTxt,styles:{cellWidth:35,fontSize:6.5,valign:"top"}},
+            {content:formTxt,styles:{cellWidth:50,fontSize:6.5,valign:"top"}},
+            {content:valTxt,styles:{cellWidth:80,fontSize:6,fontStyle:"normal",valign:"top"}},
+            {content:"(vedere anteprima)",styles:{cellWidth:55,fontSize:6,fontStyle:"italic",textColor:[150,150,150],halign:"center",valign:"middle"}},
+            {content:targetTxt,styles:{cellWidth:55,fontSize:6.5,valign:"top"}}
+          ]);
+        }else{
+          // No tabular data - simpler layout
+          var targetTxt="Baseline: "+(ind.baseline||"-")+"\nTarget 2026: "+(ind.t1||"-")+"\nTarget 2027: "+(ind.t2||"-")+"\nTarget 2028: "+(ind.t3||"-");
+          tableBody.push([
+            {content:"Significato\nindicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:35}},
+            {content:"Modalita di calcolo",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55}},
+            {content:"Indicatore / Risultati",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:90}},
+            {content:"Tipo",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:30}},
+            {content:"Valore target",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55}}
+          ]);
+          tableBody.push([
+            {content:sigTxt,styles:{cellWidth:35,fontSize:6.5,valign:"top"}},
+            {content:formTxt,styles:{cellWidth:55,fontSize:6.5,valign:"top"}},
+            {content:"Indicatore: "+(ind.nome||"-")+"\nBES/PNRR: "+(ind.bes||"-"),styles:{cellWidth:90,fontSize:6.5,valign:"top"}},
+            {content:(ind.tipo||"Output"),styles:{cellWidth:30,fontSize:7,halign:"center",valign:"middle"}},
+            {content:targetTxt,styles:{cellWidth:55,fontSize:6.5,valign:"top"}}
+          ]);
+        }
+        doc.autoTable({startY:y,margin:{left:mx,right:6},body:tableBody,theme:"grid",
+          styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2}
+        });
+        y=doc.lastAutoTable.finalY+6;
+      });
+    }
+    y+=4;
+  });
+  // Page numbers
+  var tp=doc.getNumberOfPages();
+  for(var pg=1;pg<=tp;pg++){
+    doc.setPage(pg);doc.setFontSize(7);doc.setTextColor(100);doc.setFont(undefined,"normal");
+    doc.text("Pag. "+pg+" di "+tp,W-mx,H-4,{align:"right"});
+  }
+  doc.save("OVP_Indicatori_PIAO_"+new Date().toISOString().slice(0,10)+".pdf");
+};
+
 window._exportReport=function(){
   var subs=window._SUBS;var ovps=window._loadOVP()||[];
   if(!subs.length){alert("Nessun dato");return}
@@ -1811,30 +1924,173 @@ function PieChart(p){
 }
 
 // OVP Chart component for bar/line/histogram
+// ── OVP Data Editor: editor tabellare ricco per valori riferimento + config grafico ──
+function OVPDataEditor(p){
+  var ind=p.ind,uInd=p.uInd;
+  // Parse existing tabData (CSV) into 2D array, or default
+  var parseTab=function(s){
+    if(!s)return{headers:["Anno","Molise","Abruzzo","Puglia","Campania","Italia"],rows:[["2024","0","0","0","0","0"]],rowLabels:[]};
+    try{
+      var obj=JSON.parse(s);
+      if(obj&&obj.headers&&obj.rows)return{headers:obj.headers,rows:obj.rows,rowLabels:obj.rowLabels||[]};
+    }catch(e){}
+    // Fallback: old CSV format
+    var lines=s.trim().split("\n").map(function(r){return r.split(";")});
+    if(lines.length<2)return{headers:["Anno","Valore"],rows:[["",""]],rowLabels:[]};
+    return{headers:lines[0],rows:lines.slice(1),rowLabels:[]};
+  };
+  var tbl=parseTab(ind.tabData);
+  var saveTab=function(newTbl){uInd("tabData",JSON.stringify(newTbl))};
+  var updCell=function(ri,ci,val){
+    var newRows=tbl.rows.map(function(r,i){if(i===ri){var nr=r.slice();nr[ci]=val;return nr}return r});
+    saveTab({headers:tbl.headers,rows:newRows,rowLabels:tbl.rowLabels});
+  };
+  var updHeader=function(ci,val){
+    var nh=tbl.headers.slice();nh[ci]=val;
+    saveTab({headers:nh,rows:tbl.rows,rowLabels:tbl.rowLabels});
+  };
+  var updRowLabel=function(ri,val){
+    var nl=tbl.rowLabels.slice();while(nl.length<=ri)nl.push("");nl[ri]=val;
+    saveTab({headers:tbl.headers,rows:tbl.rows,rowLabels:nl});
+  };
+  var addRow=function(){
+    var nr=tbl.headers.map(function(){return""});
+    saveTab({headers:tbl.headers,rows:tbl.rows.concat([nr]),rowLabels:tbl.rowLabels});
+  };
+  var delRow=function(ri){
+    var newRows=tbl.rows.filter(function(r,i){return i!==ri});
+    var newLabels=tbl.rowLabels.filter(function(l,i){return i!==ri});
+    saveTab({headers:tbl.headers,rows:newRows,rowLabels:newLabels});
+  };
+  var addCol=function(){
+    saveTab({headers:tbl.headers.concat(["Nuova"]),rows:tbl.rows.map(function(r){return r.concat([""])}),rowLabels:tbl.rowLabels});
+  };
+  var delCol=function(ci){
+    if(tbl.headers.length<=2){alert("Almeno 2 colonne richieste");return}
+    saveTab({headers:tbl.headers.filter(function(h,i){return i!==ci}),rows:tbl.rows.map(function(r){return r.filter(function(c,i){return i!==ci})}),rowLabels:tbl.rowLabels});
+  };
+  var iStyle={width:"100%",padding:"3px 5px",border:"1px solid #e8ecf1",borderRadius:2,fontSize:10,fontFamily:"inherit"};
+  var useRowLabels=ind.useRowLabels||false;
+  return h("details",{style:{marginTop:4,borderTop:"1px solid #eee",paddingTop:6}},
+    h("summary",{style:{cursor:"pointer",fontSize:10,fontWeight:600,color:"#8e44ad"}},"Valori di riferimento e Grafico"),
+    h("div",{style:{padding:"8px 0"}},
+      // ── CHART CONFIG ──
+      h("div",{style:{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:6,marginBottom:8,padding:8,background:"#faf7fc",borderRadius:4}},
+        h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Titolo grafico"),
+          h("input",{style:iStyle,value:ind.chartTitle||"",onChange:function(e){uInd("chartTitle",e.target.value)},placeholder:"Titolo del grafico..."})),
+        h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Asse X"),
+          h("input",{style:iStyle,value:ind.xLabel||"",onChange:function(e){uInd("xLabel",e.target.value)},placeholder:"Anno"})),
+        h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Asse Y"),
+          h("input",{style:iStyle,value:ind.yLabel||"",onChange:function(e){uInd("yLabel",e.target.value)},placeholder:"Valore"})),
+        h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Mostra legenda"),
+          h("select",{style:iStyle,value:ind.showLegend===false?"no":"yes",onChange:function(e){uInd("showLegend",e.target.value==="yes")}},
+            h("option",{value:"yes"},"Sì"),h("option",{value:"no"},"No")))
+      ),
+      h("div",{style:{display:"flex",gap:6,marginBottom:8,alignItems:"center",flexWrap:"wrap"}},
+        h("div",{style:{fontSize:9,fontWeight:600}},"Tipo grafico:"),
+        ["bar","line","pie","histogram","stackedBar"].map(function(ct){
+          return h("button",{key:ct,onClick:function(){uInd("chartType",ct)},
+            style:{padding:"4px 10px",fontSize:9,border:"1.5px solid "+(ind.chartType===ct?"#8e44ad":"#d9dadb"),borderRadius:3,background:ind.chartType===ct?"#8e44ad":"#fff",color:ind.chartType===ct?"#fff":"#333",cursor:"pointer",fontWeight:ind.chartType===ct?700:400}},
+            ct==="bar"?"Barre":ct==="line"?"Linee":ct==="pie"?"Torta":ct==="histogram"?"Istogramma":"Barre Impilate")
+        }),
+        h("label",{style:{fontSize:9,marginLeft:12}},
+          h("input",{type:"checkbox",checked:useRowLabels,onChange:function(e){uInd("useRowLabels",e.target.checked)}})," Usa intestazioni di riga"
+        )
+      ),
+      // ── TABLE EDITOR ──
+      h("div",{style:{overflowX:"auto",marginBottom:8}},
+        h("table",{style:{borderCollapse:"collapse",fontSize:10,minWidth:"100%"}},
+          // Headers row
+          h("thead",null,
+            h("tr",null,
+              useRowLabels?h("th",{style:{padding:"4px 6px",background:"#8e44ad",color:"#fff",border:"1px solid #6c2e8b",minWidth:80}},"Riga"):null,
+              tbl.headers.map(function(hd,i){
+                return h("th",{key:i,style:{padding:2,background:"#8e44ad",border:"1px solid #6c2e8b",minWidth:80}},
+                  h("div",{style:{display:"flex",gap:2,alignItems:"center"}},
+                    h("input",{style:{width:"100%",padding:"3px 5px",border:"none",background:"transparent",color:"#fff",fontWeight:700,fontSize:10},value:hd,onChange:function(e){updHeader(i,e.target.value)}}),
+                    h("button",{onClick:function(){delCol(i)},style:{padding:"1px 5px",fontSize:9,background:"#d9364f",color:"#fff",border:"none",borderRadius:2,cursor:"pointer"}},"X")
+                  )
+                )
+              }),
+              h("th",{style:{padding:"4px 6px",background:"#8e44ad",color:"#fff",border:"1px solid #6c2e8b"}},
+                h("button",{onClick:addCol,style:{padding:"2px 6px",fontSize:9,background:"#fff",color:"#8e44ad",border:"none",borderRadius:2,cursor:"pointer",fontWeight:700}},"+ Col")
+              )
+            )
+          ),
+          h("tbody",null,
+            tbl.rows.map(function(row,ri){
+              return h("tr",{key:ri,style:{background:ri%2?"#f8f9fa":"#fff"}},
+                useRowLabels?h("td",{style:{padding:1,border:"1px solid #e8ecf1",background:"#f5f0fa"}},
+                  h("input",{style:Object.assign({},iStyle,{fontWeight:700,color:"#8e44ad"}),value:(tbl.rowLabels||[])[ri]||"",onChange:function(e){updRowLabel(ri,e.target.value)},placeholder:"Etichetta"})
+                ):null,
+                row.map(function(cell,ci){
+                  return h("td",{key:ci,style:{padding:1,border:"1px solid #e8ecf1"}},
+                    h("input",{style:iStyle,value:cell,onChange:function(e){updCell(ri,ci,e.target.value)}})
+                  );
+                }),
+                h("td",{style:{padding:1,border:"1px solid #e8ecf1"}},
+                  h("button",{onClick:function(){delRow(ri)},style:{padding:"2px 6px",fontSize:9,background:"#d9364f",color:"#fff",border:"none",borderRadius:2,cursor:"pointer"}},"X")
+                )
+              );
+            })
+          )
+        )
+      ),
+      h("button",{onClick:addRow,style:{padding:"4px 10px",fontSize:10,background:"#8e44ad",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600,marginBottom:8}},"+ Aggiungi Riga"),
+      // ── CHART PREVIEW ──
+      h("div",{style:{marginTop:8,padding:8,background:"#fff",border:"1px solid #e8ecf1",borderRadius:4}},
+        h("div",{style:{fontSize:9,fontWeight:700,color:"#5c6f82",marginBottom:6}},"Anteprima grafico"),
+        h("div",{style:{height:220}},
+          (function(){
+            var labels=(tbl.rowLabels&&tbl.rowLabels.length&&useRowLabels?tbl.rowLabels:tbl.rows.map(function(r){return r[0]||""}));
+            var startCol=useRowLabels?0:1;
+            var datasets=[];
+            var colors=["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#1abc9c","#f39c12"];
+            for(var ci=startCol;ci<tbl.headers.length;ci++){
+              datasets.push({label:tbl.headers[ci],values:tbl.rows.map(function(r){return parseFloat((r[ci]||"").toString().replace(",","."))||0}),color:colors[(ci-startCol)%colors.length]});
+            }
+            if(ind.chartType==="pie"){
+              return h(PieChart,{title:ind.chartTitle||ind.nome||"",labels:labels,values:datasets[0]?datasets[0].values:[]});
+            }
+            return h(OVPChart,{labels:labels,datasets:datasets,chartType:ind.chartType||"bar",title:ind.chartTitle||ind.nome||"",xLabel:ind.xLabel,yLabel:ind.yLabel,showLegend:ind.showLegend!==false,stacked:ind.chartType==="stackedBar"});
+          })()
+        )
+      )
+    )
+  );
+}
+
 function OVPChart(p){
   var ref=useRef(null),chartRef=useRef(null);
   useEffect(function(){
     if(!ref.current||!window.Chart)return;
     if(chartRef.current)chartRef.current.destroy();
     var labels=p.labels||[];var datasets=p.datasets||[];
-    var type=p.chartType==="histogram"?"bar":p.chartType||"bar";
-    var colors=["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22"];
+    var type=(p.chartType==="histogram"||p.chartType==="stackedBar")?"bar":p.chartType||"bar";
+    var stacked=p.stacked||p.chartType==="stackedBar";
+    var colors=["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#1abc9c","#f39c12"];
     chartRef.current=new window.Chart(ref.current,{
       type:type,
       data:{labels:labels,datasets:datasets.map(function(ds,i){return{
         label:ds.label||"Serie "+(i+1),data:ds.values||[],
-        backgroundColor:type==="line"?"transparent":colors[i%colors.length],
-        borderColor:colors[i%colors.length],borderWidth:type==="line"?2:1,
-        tension:type==="line"?0.3:0,fill:false
+        backgroundColor:type==="line"?"rgba("+(i===0?"0,51,102":i===1?"0,102,204":i===2?"0,135,88":"217,54,79")+",0.1)":(ds.color||colors[i%colors.length]),
+        borderColor:ds.color||colors[i%colors.length],borderWidth:type==="line"?2.5:1,
+        tension:type==="line"?0.3:0,fill:type==="line",pointRadius:type==="line"?4:0
       }})},
       options:{responsive:true,maintainAspectRatio:false,
-        plugins:{title:{display:!!p.title,text:p.title||"",font:{size:11}},legend:{labels:{font:{size:9}}}},
-        scales:{y:{beginAtZero:true,ticks:{font:{size:9}}},x:{ticks:{font:{size:9}}}}
+        plugins:{
+          title:{display:!!p.title,text:p.title||"",font:{size:12,weight:"bold"},color:"#003366"},
+          legend:{display:p.showLegend!==false,position:"bottom",labels:{font:{size:9},usePointStyle:true,padding:10}}
+        },
+        scales:{
+          y:{beginAtZero:true,stacked:stacked,title:{display:!!p.yLabel,text:p.yLabel||"",font:{size:10}},ticks:{font:{size:9}},grid:{color:"rgba(0,0,0,0.06)"}},
+          x:{stacked:stacked,title:{display:!!p.xLabel,text:p.xLabel||"",font:{size:10}},ticks:{font:{size:9}},grid:{display:false}}
+        }
       }
     });
     return function(){if(chartRef.current)chartRef.current.destroy()};
-  },[p.labels,p.datasets,p.chartType,p.title]);
-  return h("canvas",{ref:ref,style:{maxHeight:200}});
+  },[p.labels,p.datasets,p.chartType,p.title,p.xLabel,p.yLabel,p.showLegend,p.stacked]);
+  return h("canvas",{ref:ref,style:{maxHeight:220}});
 }
 
 function Dash(p){
@@ -3304,14 +3560,15 @@ function App(){
             h("div",{style:{display:"flex",gap:6}},
               h("button",{onClick:function(){window._exportOVPexcel()},style:{padding:"6px 12px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"Scarica Excel"),
               h("button",{onClick:function(){window._exportOVPpdf()},style:{padding:"6px 12px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"Scarica PDF"),
+              h("button",{onClick:function(){window._exportOVPpiao()},style:{padding:"6px 12px",background:"#c80000",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"PDF PIAO"),
               h("button",{onClick:addOvp,style:{padding:"6px 14px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:11,cursor:"pointer"}},"+  Aggiungi OVP")
             )
           ),
           // Each OVP card
           ovps.map(function(ovp,oi){
             var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
-            var unlinkedStrs=subs.filter(function(s){return s.type==="strategic"&&(!s.data.ovpRef||s.data.ovpRef==="")});
-            return h("div",{key:ovp.id,className:"cd",style:{marginBottom:14,borderLeft:"4px solid #8e44ad",overflow:"hidden"}},
+            var unlinkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef!==ovp.id});
+            return h("div",{key:ovp.id,className:"cd",style:{marginBottom:14,borderLeft:"4px solid #8e44ad"}},
               // Header
               h("div",{style:{padding:"10px 14px",background:"#f5f0fa",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
                 h("div",{style:{flex:1,marginRight:10}},
@@ -3360,52 +3617,13 @@ function App(){
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Tipo"),h("select",{style:IS3,value:ind.tipo||"",onChange:function(e){uInd("tipo",e.target.value)}},h("option",{value:"Output"},"Output"),h("option",{value:"Outcome"},"Outcome"))),
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"BES/PNRR"),h("input",{style:IS3,value:ind.bes||"",onChange:function(e){uInd("bes",e.target.value)}}))
                     ),
-                    h("details",{style:{marginTop:4,borderTop:"1px solid #eee",paddingTop:6}},
-                      h("summary",{style:{cursor:"pointer",fontSize:10,fontWeight:600,color:"#8e44ad"}},"Dati tabellari e Grafico"),
-                      h("div",{style:{padding:"8px 0"}},
-                        h("div",{style:{fontSize:9,color:"#5c6f82",marginBottom:4}},"Inserisci dati CSV (separatore: punto e virgola). Prima riga = intestazioni."),
-                        h("textarea",{style:Object.assign({},TS3,{minHeight:60,fontFamily:"monospace",fontSize:10}),value:ind.tabData||"",onChange:function(e){uInd("tabData",e.target.value)},placeholder:"Anno;Valore;Target\n2024;85;90\n2025;92;95\n2026;100;100"}),
-                        h("div",{style:{display:"flex",gap:6,marginTop:4,alignItems:"center"}},
-                          h("div",{style:{fontSize:9,fontWeight:600}},"Tipo grafico:"),
-                          ["bar","line","pie","histogram"].map(function(ct){
-                            return h("button",{key:ct,onClick:function(){uInd("chartType",ct)},
-                              style:{padding:"3px 8px",fontSize:9,border:"1px solid "+(ind.chartType===ct?"#8e44ad":"#d9dadb"),borderRadius:3,background:ind.chartType===ct?"#8e44ad":"#fff",color:ind.chartType===ct?"#fff":"#333",cursor:"pointer"}},
-                              ct==="bar"?"Barre":ct==="line"?"Linee":ct==="pie"?"Torta":"Istogramma")
-                          })
-                        ),
-                        ind.tabData?(function(){
-                          var rows=(ind.tabData||"").trim().split("\n").map(function(r){return r.split(";")});
-                          if(rows.length<2)return null;
-                          var headers=rows[0];var data=rows.slice(1);
-                          return h("div",{style:{marginTop:8}},
-                            h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:9,marginBottom:8}},
-                              h("thead",null,h("tr",null,headers.map(function(hd,i){return h("th",{key:i,style:{padding:"3px 6px",background:"#8e44ad",color:"#fff",textAlign:"left"}},hd)}))),
-                              h("tbody",null,data.map(function(row,ri){return h("tr",{key:ri,style:{background:ri%2?"#f8f9fa":"#fff"}},row.map(function(cell,ci){return h("td",{key:ci,style:{padding:"2px 6px",borderBottom:"1px solid #eee"}},cell)}))}))
-                            ),
-                            h("div",{style:{height:200}},
-                              (function(){
-                                var labels=data.map(function(r){return r[0]||""});
-                                var datasets=[];
-                                var colors=["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22"];
-                                for(var ci=1;ci<headers.length;ci++){
-                                  datasets.push({label:headers[ci],values:data.map(function(r){return parseFloat(r[ci])||0}),color:colors[(ci-1)%colors.length]});
-                                }
-                                if(ind.chartType==="pie"){
-                                  return h(PieChart,{title:ind.nome||"",labels:labels,values:datasets[0]?datasets[0].values:[]});
-                                }
-                                return h(OVPChart,{labels:labels,datasets:datasets,chartType:ind.chartType||"bar",title:ind.nome||""});
-                              })()
-                            )
-                          );
-                        })():null
-                      )
-                    )
+                    h(OVPDataEditor,{ind:ind,uInd:uInd})
                   )
                 }),
               ),
               // ── ASSOCIAZIONE STR ──
-              h("div",{style:{padding:"10px 14px",borderTop:"1px solid #e8ecf1",background:"#fafafa"}},
-                h("div",{style:{fontWeight:600,fontSize:11,color:"#8e44ad",marginBottom:6}},"Associa Obiettivi Strategici a questo OVP"),
+              h("div",{style:{padding:"12px 14px",borderTop:"2px solid #8e44ad",background:"#faf7fc"}},
+                h("div",{style:{fontWeight:700,fontSize:12,color:"#8e44ad",marginBottom:8}},"Associa Obiettivi Strategici a questo OVP"),
                 // Currently linked
                 linkedStrs.length?h("div",{style:{marginBottom:8}},
                   linkedStrs.map(function(s){
@@ -3416,15 +3634,18 @@ function App(){
                   })
                 ):null,
                 // Add new link
-                unlinkedStrs.length?h("div",{style:{display:"flex",gap:6}},
-                  h("select",{id:"ovp_link_"+ovp.id,style:{flex:1,padding:4,fontSize:10,border:"1px solid #d9dadb",borderRadius:3}},
+                unlinkedStrs.length?h("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+                  h("select",{id:"ovp_link_"+ovp.id,style:{flex:1,padding:"6px 8px",fontSize:11,border:"2px solid #8e44ad",borderRadius:4,background:"#fff"}},
                     h("option",{value:""},"-- Seleziona ob. strategico da collegare --"),
-                    unlinkedStrs.map(function(s){return h("option",{key:s.id,value:s.id},s.data.codice+" — "+s.serviceName+" — "+(s.data.nome||""))})
+                    unlinkedStrs.map(function(s){
+                      var cur=s.data.ovpRef?"["+ovps.filter(function(o){return o.id===s.data.ovpRef}).map(function(o){return o.cod}).join("")+"] ":"";
+                      return h("option",{key:s.id,value:s.id},cur+s.data.codice+" — "+s.serviceName+" — "+(s.data.nome||""))
+                    })
                   ),
                   h("button",{onClick:function(){
                     var sel=document.getElementById("ovp_link_"+ovp.id);
                     if(sel&&sel.value)linkStrToOvp(sel.value,ovp.id);
-                  },style:{padding:"4px 12px",fontSize:10,background:"#8e44ad",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600}},"Collega")
+                  },style:{padding:"6px 16px",fontSize:12,background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontWeight:700}},"Collega")
                 ):h("div",{style:{fontSize:10,color:"#999"}},"Tutti gli ob. strategici sono gia collegati")
               )
             )

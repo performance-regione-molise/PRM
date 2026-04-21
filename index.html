@@ -1451,30 +1451,65 @@ window._exportOVPpdf=function(){
 window._exportOVPpiao=function(){
   var ovps=window._loadOVP()||[];var subs=window._SUBS;
   if(!ovps.length){alert("Nessun OVP definito");return}
+  // Helper: render chart to image data URL
+  var renderChart=function(ind,tbl){
+    try{
+      if(!window.Chart)return null;
+      var cvs=document.createElement("canvas");cvs.width=400;cvs.height=250;
+      var labels=[];var datasets=[];
+      if(tbl&&tbl.headers&&tbl.rows){
+        labels=ind.useRowLabels&&tbl.rowLabels?tbl.rowLabels:tbl.headers;
+        if(ind.useRowLabels&&tbl.rowLabels){
+          tbl.headers.forEach(function(h,hi){datasets.push({label:h,values:tbl.rows.map(function(r){return parseFloat(r[hi])||0})})});
+        }else{
+          tbl.rows.forEach(function(row,ri){datasets.push({label:tbl.rowLabels&&tbl.rowLabels[ri]?tbl.rowLabels[ri]:"Serie "+(ri+1),values:row.map(function(v){return parseFloat(v)||0})})});
+        }
+      }else{
+        labels=["Baseline","2026","2027","2028"];
+        datasets=[{label:ind.nome||"Indicatore",values:[parseFloat(ind.baseline)||0,parseFloat(ind.t1)||0,parseFloat(ind.t2)||0,parseFloat(ind.t3)||0]}];
+      }
+      if(!labels.length||!datasets.length)return null;
+      var type=(ind.chartType==="histogram"||ind.chartType==="stackedBar")?"bar":ind.chartType||"bar";
+      var stacked=ind.chartType==="stackedBar";
+      var colors=["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#1abc9c","#f39c12"];
+      var chart=new window.Chart(cvs,{
+        type:type,
+        data:{labels:labels,datasets:datasets.map(function(ds,i){return{
+          label:ds.label,data:ds.values,
+          backgroundColor:type==="line"?"rgba(0,51,102,0.1)":(type==="pie"?colors:colors[i%colors.length]),
+          borderColor:colors[i%colors.length],borderWidth:type==="line"?2:1,
+          tension:type==="line"?0.3:0,fill:type==="line",pointRadius:type==="line"?3:0
+        }})},
+        options:{responsive:false,animation:false,
+          plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||"",font:{size:11}},legend:{display:ind.showLegend!==false,position:"bottom",labels:{font:{size:8}}}},
+          scales:type==="pie"?{}:{y:{beginAtZero:true,stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||""}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||""}}}
+        }
+      });
+      var imgData=cvs.toDataURL("image/png");
+      chart.destroy();
+      return imgData;
+    }catch(e){console.warn("Chart render error:",e);return null}
+  };
   var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
   var W=297,H=210,mx=6;
-  // Header
   var addHeader=function(){
     try{doc.addImage(window.LOGO_MD,"PNG",5,3,14,14)}catch(e){}
-    doc.setTextColor(200,0,0);doc.setFontSize(10);doc.setFont(undefined,"bold","italic");
+    doc.setTextColor(200,0,0);doc.setFontSize(10);doc.setFont(undefined,"italic");
     doc.text("Piano della Performance Organizzativa 2026-2028",22,10);
     doc.setDrawColor(200);doc.line(mx,18,W-mx,18);
   };
   addHeader();
-  // Title page
   doc.setTextColor(200,0,0);doc.setFontSize(16);doc.setFont(undefined,"bold");
   doc.text("Indicatori di outcome",W/2,40,{align:"center"});
   doc.setTextColor(0);doc.setFontSize(10);doc.setFont(undefined,"normal");
   doc.text("Obiettivi di Valore Pubblico - Regione Molise",W/2,50,{align:"center"});
   var y=60;
-  // For each OVP
   ovps.forEach(function(ovp){
     if(y>H-30){doc.addPage("a4","landscape");addHeader();y=24}
     doc.setFillColor(142,68,173);doc.rect(mx,y,W-12,7,"F");
     doc.setTextColor(255);doc.setFontSize(10);doc.setFont(undefined,"bold");
     doc.text(ovp.cod+" - "+ovp.nome.substring(0,90),mx+3,y+5);y+=10;
     doc.setTextColor(0);
-    // Linked STRs
     var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
     if(linkedStrs.length){
       doc.setFontSize(7);doc.setFont(undefined,"bold");
@@ -1484,73 +1519,69 @@ window._exportOVPpiao=function(){
         doc.text("  "+s.data.codice+" - "+s.serviceCode+" - "+(s.data.nome||"").substring(0,80),mx+4,y+3);y+=3.5;
       });y+=3;
     }
-    // Indicatori table
     if(ovp.indicatori.length){
       ovp.indicatori.forEach(function(ind){
         if(y>H-50){doc.addPage("a4","landscape");addHeader();y=24}
-        // Parse tabData
         var tbl=null;
         try{tbl=JSON.parse(ind.tabData)}catch(e){}
-        // Header bar: "Indicatori di outcome"
+        var chartImg=renderChart(ind,tbl);
         doc.setFillColor(200,0,0);doc.rect(mx,y,W-12,6,"F");
         doc.setTextColor(255);doc.setFontSize(9);doc.setFont(undefined,"bold");
         doc.text("Indicatori di outcome",mx+3,y+4.2);y+=8;
-        // Build PIAO-style table
-        var tableBody=[];
-        // Row 1: Indicator info + data
         var sigTxt=(ind.nome||"")+"\n\n"+(ind.descrInd||"");
         var formTxt=(ind.formula||"")+"\n\nFonte: "+(ind.fonte||"-");
-        // If tabular data exists, create value rows
+        var targetTxt="Baseline: "+(ind.baseline||"-")+"\nTarget 2026: "+(ind.t1||"-")+"\nTarget 2027: "+(ind.t2||"-")+"\nTarget 2028: "+(ind.t3||"-");
+        var tableBody=[];
+        var chartCol;
         if(tbl&&tbl.headers&&tbl.rows){
-          var valHeaders=tbl.headers.slice();
-          // First row with header
+          chartCol=3;
+          var valTxt=tbl.headers.join("  |  ")+"\n"+Array(tbl.headers.join("  |  ").length).join("-")+"\n";
+          tbl.rows.forEach(function(row){valTxt+=row.join("  |  ")+"\n"});
           tableBody.push([
             {content:"Significato\nindicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:35,valign:"top"}},
-            {content:"Modalita di calcolo indicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:50,valign:"top"}},
+            {content:"Modalita di calcolo",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:50,valign:"top"}},
             {content:"Valori di riferimento",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:80,halign:"center",valign:"top"}},
             {content:"Grafico",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55,halign:"center",valign:"top"}},
             {content:"Valore target",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55,valign:"top"}}
           ]);
-          // Sub-header for values columns
-          var valSubH=valHeaders.join("  |  ");
-          // Data rows
-          var valTxt=valSubH+"\n"+Array(valSubH.length).join("-")+"\n";
-          tbl.rows.forEach(function(row){valTxt+=row.join("  |  ")+"\n"});
-          var targetTxt="Baseline: "+(ind.baseline||"-")+"\nTarget 2026: "+(ind.t1||"-")+"\nTarget 2027: "+(ind.t2||"-")+"\nTarget 2028: "+(ind.t3||"-");
           tableBody.push([
             {content:sigTxt,styles:{cellWidth:35,fontSize:6.5,valign:"top"}},
             {content:formTxt,styles:{cellWidth:50,fontSize:6.5,valign:"top"}},
-            {content:valTxt,styles:{cellWidth:80,fontSize:6,fontStyle:"normal",valign:"top"}},
-            {content:"(vedere anteprima)",styles:{cellWidth:55,fontSize:6,fontStyle:"italic",textColor:[150,150,150],halign:"center",valign:"middle"}},
+            {content:valTxt,styles:{cellWidth:80,fontSize:6,valign:"top"}},
+            {content:"",styles:{cellWidth:55,minCellHeight:35}},
             {content:targetTxt,styles:{cellWidth:55,fontSize:6.5,valign:"top"}}
           ]);
         }else{
-          // No tabular data - simpler layout
-          var targetTxt="Baseline: "+(ind.baseline||"-")+"\nTarget 2026: "+(ind.t1||"-")+"\nTarget 2027: "+(ind.t2||"-")+"\nTarget 2028: "+(ind.t3||"-");
+          chartCol=2;
           tableBody.push([
-            {content:"Significato\nindicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:35}},
+            {content:"Significato\nindicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:40}},
             {content:"Modalita di calcolo",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55}},
-            {content:"Indicatore / Risultati",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:90}},
-            {content:"Tipo",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:30}},
+            {content:"Grafico",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:90,halign:"center"}},
+            {content:"Tipo",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:25}},
             {content:"Valore target",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55}}
           ]);
           tableBody.push([
-            {content:sigTxt,styles:{cellWidth:35,fontSize:6.5,valign:"top"}},
+            {content:sigTxt,styles:{cellWidth:40,fontSize:6.5,valign:"top"}},
             {content:formTxt,styles:{cellWidth:55,fontSize:6.5,valign:"top"}},
-            {content:"Indicatore: "+(ind.nome||"-")+"\nBES/PNRR: "+(ind.bes||"-"),styles:{cellWidth:90,fontSize:6.5,valign:"top"}},
-            {content:(ind.tipo||"Output"),styles:{cellWidth:30,fontSize:7,halign:"center",valign:"middle"}},
+            {content:"",styles:{cellWidth:90,minCellHeight:35}},
+            {content:(ind.tipo||"Output")+"\n\nBES: "+(ind.bes||"-"),styles:{cellWidth:25,fontSize:6.5,halign:"center",valign:"top"}},
             {content:targetTxt,styles:{cellWidth:55,fontSize:6.5,valign:"top"}}
           ]);
         }
+        var cc=chartCol;var ci=chartImg;
         doc.autoTable({startY:y,margin:{left:mx,right:6},body:tableBody,theme:"grid",
-          styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2}
+          styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2},
+          didDrawCell:function(data){
+            if(data.row.index===1&&data.column.index===cc&&ci){
+              try{doc.addImage(ci,"PNG",data.cell.x+1,data.cell.y+1,data.cell.width-2,data.cell.height-2)}catch(e){}
+            }
+          }
         });
         y=doc.lastAutoTable.finalY+6;
       });
     }
     y+=4;
   });
-  // Page numbers
   var tp=doc.getNumberOfPages();
   for(var pg=1;pg<=tp;pg++){
     doc.setPage(pg);doc.setFontSize(7);doc.setTextColor(100);doc.setFont(undefined,"normal");
@@ -3568,7 +3599,7 @@ function App(){
           ovps.map(function(ovp,oi){
             var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
             var unlinkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef!==ovp.id});
-            return h("div",{key:ovp.id,className:"cd",style:{marginBottom:14,borderLeft:"4px solid #8e44ad",overflow:"hidden"}},
+            return h("div",{key:ovp.id,className:"cd",style:{marginBottom:14,borderLeft:"4px solid #8e44ad"}},
               // Header
               h("div",{style:{padding:"10px 14px",background:"#f5f0fa",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
                 h("div",{style:{flex:1,marginRight:10}},
@@ -3628,7 +3659,9 @@ function App(){
                 linkedStrs.length?h("div",{style:{marginBottom:8}},
                   linkedStrs.map(function(s){
                     return h("div",{key:s.id,style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,padding:"6px 10px",background:"#e8f0fe",borderRadius:4,marginBottom:4,fontSize:11}},
-                      h("span",{style:{wordBreak:"break-word"}},h("b",null,s.data.codice)," — ",s.serviceName," — ",(s.data.nome||"")),
+                      h("span",{style:{wordBreak:"break-word"}},h("b",null,s.data.codice)," — ",s.serviceName,
+                        s.data.missione?h("span",{style:{color:"#8e44ad",fontSize:10}}," [M"+s.data.missione+(s.data.programma?" P"+s.data.programma:"")+"]"):null,
+                        " — ",(s.data.nome||"")),
                       h("button",{onClick:function(){linkStrToOvp(s.id,"")},style:{padding:"2px 8px",fontSize:9,background:"#d9364f",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"Rimuovi")
                     )
                   })
@@ -3639,7 +3672,11 @@ function App(){
                     h("option",{value:""},"-- Seleziona ob. strategico da collegare --"),
                     unlinkedStrs.map(function(s){
                       var cur=s.data.ovpRef?"["+ovps.filter(function(o){return o.id===s.data.ovpRef}).map(function(o){return o.cod}).join("")+"] ":"";
-                      return h("option",{key:s.id,value:s.id},cur+s.data.codice+" — "+s.serviceName+" — "+(s.data.nome||""))
+                      var mis=s.data.missione?("M"+s.data.missione):"";
+                      var pro=s.data.programma?(" P"+s.data.programma):"";
+                      var mp=mis||pro?" ["+mis+pro+"]":"";
+                      var desc=s.data.descrizione?(s.data.descrizione).substring(0,60):"";
+                      return h("option",{key:s.id,value:s.id},cur+s.data.codice+" — "+s.serviceName+mp+" — "+(s.data.nome||"")+(desc?" — "+desc:""))
                     })
                   ),
                   h("button",{onClick:function(){

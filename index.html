@@ -1451,11 +1451,11 @@ window._exportOVPpdf=function(){
 window._exportOVPpiao=function(){
   var ovps=window._loadOVP()||[];var subs=window._SUBS;
   if(!ovps.length){alert("Nessun OVP definito");return}
-  // Helper: render chart to image data URL
+  // ── Chart renderer ──
   var renderChart=function(ind,tbl){
     try{
       if(!window.Chart)return null;
-      var cvs=document.createElement("canvas");cvs.width=400;cvs.height=250;
+      var cvs=document.createElement("canvas");cvs.width=500;cvs.height=300;
       var labels=[];var datasets=[];
       if(tbl&&tbl.headers&&tbl.rows){
         labels=ind.useRowLabels&&tbl.rowLabels?tbl.rowLabels:tbl.headers;
@@ -1465,129 +1465,221 @@ window._exportOVPpiao=function(){
           tbl.rows.forEach(function(row,ri){datasets.push({label:tbl.rowLabels&&tbl.rowLabels[ri]?tbl.rowLabels[ri]:"Serie "+(ri+1),values:row.map(function(v){return parseFloat(v)||0})})});
         }
       }else{
-        labels=["Baseline","2026","2027","2028"];
-        datasets=[{label:ind.nome||"Indicatore",values:[parseFloat(ind.baseline)||0,parseFloat(ind.t1)||0,parseFloat(ind.t2)||0,parseFloat(ind.t3)||0]}];
+        labels=["Baseline","Target"];
+        datasets=[{label:ind.nome||"",values:[parseFloat(ind.baseline)||0,parseFloat(ind.t1)||0]}];
       }
       if(!labels.length||!datasets.length)return null;
       var type=(ind.chartType==="histogram"||ind.chartType==="stackedBar")?"bar":ind.chartType||"bar";
       var stacked=ind.chartType==="stackedBar";
       var colors=["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#1abc9c","#f39c12"];
-      var chart=new window.Chart(cvs,{
-        type:type,
-        data:{labels:labels,datasets:datasets.map(function(ds,i){return{
-          label:ds.label,data:ds.values,
-          backgroundColor:type==="line"?"rgba(0,51,102,0.1)":(type==="pie"?colors:colors[i%colors.length]),
-          borderColor:colors[i%colors.length],borderWidth:type==="line"?2:1,
-          tension:type==="line"?0.3:0,fill:type==="line",pointRadius:type==="line"?3:0
-        }})},
-        options:{responsive:false,animation:false,
-          plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||"",font:{size:11}},legend:{display:ind.showLegend!==false,position:"bottom",labels:{font:{size:8}}}},
-          scales:type==="pie"?{}:{y:{beginAtZero:true,stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||""}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||""}}}
-        }
-      });
-      var imgData=cvs.toDataURL("image/png");
-      chart.destroy();
-      return imgData;
-    }catch(e){console.warn("Chart render error:",e);return null}
+      var chart=new window.Chart(cvs,{type:type,data:{labels:labels,datasets:datasets.map(function(ds,i){return{label:ds.label,data:ds.values,backgroundColor:type==="line"?"rgba(0,51,102,0.1)":(type==="pie"?colors:colors[i%colors.length]),borderColor:colors[i%colors.length],borderWidth:type==="line"?2:1,tension:0.3,fill:type==="line",pointRadius:type==="line"?3:0}})},options:{responsive:false,animation:false,plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||""},legend:{display:ind.showLegend!==false,position:"bottom"}},scales:type==="pie"?{}:{y:{beginAtZero:true,stacked:stacked},x:{stacked:stacked}}}});
+      var img=cvs.toDataURL("image/png");chart.destroy();return img;
+    }catch(e){return null}
   };
+  // ── Frequency counter ──
+  var freq=function(arr){var m={};arr.forEach(function(v){if(v)m[v]=(m[v]||0)+1});return Object.keys(m).sort().map(function(k){return{label:k,count:m[k]}})};
   var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-  var W=297,H=210,mx=6;
+  var W=297,H=210,mx=8;
+  var pageY;
   var addHeader=function(){
     try{doc.addImage(window.LOGO_MD,"PNG",5,3,14,14)}catch(e){}
     doc.setTextColor(200,0,0);doc.setFontSize(10);doc.setFont(undefined,"italic");
-    doc.text("Piano della Performance Organizzativa 2026-2028",22,10);
-    doc.setDrawColor(200);doc.line(mx,18,W-mx,18);
+    doc.text("Piano della Performance Organizzativa 2026-2028 - Regione Molise",22,10);
+    doc.setDrawColor(200,0,0);doc.line(mx,17,W-mx,17);
+    pageY=22;
   };
+  var checkPage=function(need){if(pageY>H-need){doc.addPage("a4","landscape");addHeader()}};
+  var sectNum=function(a,b,c,d){var s=a+"";if(b!==undefined)s+="."+b;if(c!==undefined)s+="."+c;if(d!==undefined)s+="."+d;return s};
+  // ── Collect TOC entries ──
+  var tocEntries=[];
+  // ── TITLE PAGE ──
   addHeader();
-  doc.setTextColor(200,0,0);doc.setFontSize(16);doc.setFont(undefined,"bold");
-  doc.text("Indicatori di outcome",W/2,40,{align:"center"});
-  doc.setTextColor(0);doc.setFontSize(10);doc.setFont(undefined,"normal");
-  doc.text("Obiettivi di Valore Pubblico - Regione Molise",W/2,50,{align:"center"});
-  var y=60;
-  ovps.forEach(function(ovp){
-    if(y>H-30){doc.addPage("a4","landscape");addHeader();y=24}
-    doc.setFillColor(142,68,173);doc.rect(mx,y,W-12,7,"F");
-    doc.setTextColor(255);doc.setFontSize(10);doc.setFont(undefined,"bold");
-    doc.text(ovp.cod+" - "+ovp.nome.substring(0,90),mx+3,y+5);y+=10;
-    doc.setTextColor(0);
+  doc.setTextColor(200,0,0);doc.setFontSize(18);doc.setFont(undefined,"bold");
+  doc.text("PIANO DELLA PERFORMANCE",W/2,55,{align:"center"});
+  doc.text("ORGANIZZATIVA 2026-2028",W/2,65,{align:"center"});
+  doc.setTextColor(80);doc.setFontSize(12);doc.setFont(undefined,"normal");
+  doc.text("Obiettivi di Valore Pubblico",W/2,80,{align:"center"});
+  doc.text("Indicatori di Outcome",W/2,88,{align:"center"});
+  doc.setFontSize(10);doc.text("Regione Molise",W/2,100,{align:"center"});
+  doc.text("Documento generato il "+new Date().toLocaleDateString("it-IT"),W/2,108,{align:"center"});
+  // ── TOC PAGE (placeholder - filled later) ──
+  doc.addPage("a4","landscape");addHeader();
+  var tocPageNum=doc.getNumberOfPages();
+  // ── CONTENT ──
+  ovps.forEach(function(ovp,oi){
+    var chNum=oi+1;
     var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
-    if(linkedStrs.length){
-      doc.setFontSize(7);doc.setFont(undefined,"bold");
-      doc.text("Obiettivi Strategici collegati:",mx+2,y+3);y+=4;
-      doc.setFont(undefined,"normal");
-      linkedStrs.forEach(function(s){
-        doc.text("  "+s.data.codice+" - "+s.serviceCode+" - "+(s.data.nome||"").substring(0,80),mx+4,y+3);y+=3.5;
-      });y+=3;
-    }
+    var linkedOprIds=[];linkedStrs.forEach(function(s){subs.forEach(function(o){if(o.type==="operative"&&o.parentId===s.id)linkedOprIds.push(o)})});
+    // ═══ 1.X OVP ═══
+    doc.addPage("a4","landscape");addHeader();
+    tocEntries.push({level:1,text:sectNum(1,chNum)+" "+ovp.cod+" - "+ovp.nome.substring(0,80),page:doc.getNumberOfPages()});
+    doc.setFillColor(142,68,173);doc.rect(mx,pageY,W-16,8,"F");
+    doc.setTextColor(255);doc.setFontSize(12);doc.setFont(undefined,"bold");
+    doc.text(sectNum(1,chNum)+" "+ovp.cod+" - "+ovp.nome.substring(0,85),mx+3,pageY+6);pageY+=12;
+    // ═══ 1.X.1 Descrizione OVP ═══
+    tocEntries.push({level:2,text:sectNum(1,chNum,1)+" Descrizione OVP",page:doc.getNumberOfPages()});
+    doc.setTextColor(142,68,173);doc.setFontSize(10);doc.setFont(undefined,"bold");
+    doc.text(sectNum(1,chNum,1)+" Descrizione OVP",mx,pageY+4);pageY+=7;
+    doc.setTextColor(0);doc.setFontSize(8);doc.setFont(undefined,"normal");
+    var descLines=doc.splitTextToSize(ovp.descrizione||ovp.nome||"(nessuna descrizione)",W-20);
+    doc.text(descLines,mx+2,pageY+3);pageY+=descLines.length*3.5+4;
+    // Stats box
+    doc.setFillColor(245,240,250);doc.rect(mx,pageY,W-16,14,"F");
+    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(80);
+    doc.text("Obiettivi Strategici collegati: "+linkedStrs.length,mx+4,pageY+5);
+    doc.text("Obiettivi Operativi che concorrono: "+linkedOprIds.length,mx+4,pageY+10);
+    doc.text("Indicatori di misurazione: "+ovp.indicatori.length,mx+130,pageY+5);
+    doc.text("Missioni di riferimento: "+(ovp.missioni||[]).map(function(m){return"M"+m}).join(", "),mx+130,pageY+10);
+    pageY+=18;
+    // ═══ 1.X.2 Indicatori ═══
     if(ovp.indicatori.length){
-      ovp.indicatori.forEach(function(ind){
-        if(y>H-50){doc.addPage("a4","landscape");addHeader();y=24}
-        var tbl=null;
-        try{tbl=JSON.parse(ind.tabData)}catch(e){}
+      tocEntries.push({level:2,text:sectNum(1,chNum,2)+" Indicatori",page:doc.getNumberOfPages()});
+      doc.setTextColor(142,68,173);doc.setFontSize(10);doc.setFont(undefined,"bold");
+      doc.text(sectNum(1,chNum,2)+" Indicatori",mx,pageY+4);pageY+=8;
+      ovp.indicatori.forEach(function(ind,ii){
+        checkPage(55);
+        var tbl=null;try{tbl=JSON.parse(ind.tabData)}catch(e){}
         var chartImg=renderChart(ind,tbl);
-        doc.setFillColor(200,0,0);doc.rect(mx,y,W-12,6,"F");
-        doc.setTextColor(255);doc.setFontSize(9);doc.setFont(undefined,"bold");
-        doc.text("Indicatori di outcome",mx+3,y+4.2);y+=8;
-        var sigTxt=(ind.nome||"")+"\n\n"+(ind.descrInd||"");
-        var formTxt=(ind.formula||"")+"\n\nFonte: "+(ind.fonte||"-");
-        var targetTxt="Baseline: "+(ind.baseline||"-")+"\nTarget 2026: "+(ind.t1||"-")+"\nTarget 2027: "+(ind.t2||"-")+"\nTarget 2028: "+(ind.t3||"-");
-        var tableBody=[];
-        var chartCol;
+        // Indicator info table (no Tipo, no BES)
+        doc.setFillColor(200,0,0);doc.rect(mx,pageY,W-16,5,"F");
+        doc.setTextColor(255);doc.setFontSize(8);doc.setFont(undefined,"bold");
+        doc.text("Indicatore "+(ii+1)+": "+(ind.nome||"").substring(0,90),mx+3,pageY+3.5);pageY+=7;
+        var tb1=[];
+        tb1.push([
+          {content:"Indicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:45}},
+          {content:"Descrizione",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:60}},
+          {content:"Formula",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55}},
+          {content:"Fonte",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:40}},
+          {content:"Baseline",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:25}},
+          {content:"Obiettivo Target\nRisultato Atteso",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:30}},
+          {content:"Data prevista\nconseguimento",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:28}}
+        ]);
+        tb1.push([ind.nome||"",ind.descrInd||"",ind.formula||"",ind.fonte||"",ind.baseline||"",ind.t1||"",ind.t2||""]);
+        doc.autoTable({startY:pageY,margin:{left:mx,right:8},body:tb1,theme:"grid",styles:{fontSize:6.5,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2}});
+        pageY=doc.lastAutoTable.finalY+4;
+        // ── Sezione grafica: 2 colonne (dati tabellari | grafico) ──
+        checkPage(50);
         if(tbl&&tbl.headers&&tbl.rows){
-          chartCol=3;
-          var valTxt=tbl.headers.join("  |  ")+"\n"+Array(tbl.headers.join("  |  ").length).join("-")+"\n";
+          var valTxt=tbl.headers.join("  |  ")+"\n"+Array(Math.min(tbl.headers.join("  |  ").length,40)).join("-")+"\n";
           tbl.rows.forEach(function(row){valTxt+=row.join("  |  ")+"\n"});
-          tableBody.push([
-            {content:"Significato\nindicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:35,valign:"top"}},
-            {content:"Modalita di calcolo",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:50,valign:"top"}},
-            {content:"Valori di riferimento",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:80,halign:"center",valign:"top"}},
-            {content:"Grafico",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55,halign:"center",valign:"top"}},
-            {content:"Valore target",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55,valign:"top"}}
+          var tb2=[];
+          tb2.push([
+            {content:"Dati di riferimento",styles:{fontStyle:"bold",fillColor:[100,100,100],textColor:[255,255,255],cellWidth:140,halign:"center"}},
+            {content:"Rappresentazione grafica",styles:{fontStyle:"bold",fillColor:[100,100,100],textColor:[255,255,255],cellWidth:140,halign:"center"}}
           ]);
-          tableBody.push([
-            {content:sigTxt,styles:{cellWidth:35,fontSize:6.5,valign:"top"}},
-            {content:formTxt,styles:{cellWidth:50,fontSize:6.5,valign:"top"}},
-            {content:valTxt,styles:{cellWidth:80,fontSize:6,valign:"top"}},
-            {content:"",styles:{cellWidth:55,minCellHeight:35}},
-            {content:targetTxt,styles:{cellWidth:55,fontSize:6.5,valign:"top"}}
+          tb2.push([
+            {content:valTxt,styles:{cellWidth:140,fontSize:6,valign:"top"}},
+            {content:"",styles:{cellWidth:140,minCellHeight:40}}
           ]);
-        }else{
-          chartCol=2;
-          tableBody.push([
-            {content:"Significato\nindicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:40}},
-            {content:"Modalita di calcolo",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55}},
-            {content:"Grafico",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:90,halign:"center"}},
-            {content:"Tipo",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:25}},
-            {content:"Valore target",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255],cellWidth:55}}
-          ]);
-          tableBody.push([
-            {content:sigTxt,styles:{cellWidth:40,fontSize:6.5,valign:"top"}},
-            {content:formTxt,styles:{cellWidth:55,fontSize:6.5,valign:"top"}},
-            {content:"",styles:{cellWidth:90,minCellHeight:35}},
-            {content:(ind.tipo||"Output")+"\n\nBES: "+(ind.bes||"-"),styles:{cellWidth:25,fontSize:6.5,halign:"center",valign:"top"}},
-            {content:targetTxt,styles:{cellWidth:55,fontSize:6.5,valign:"top"}}
-          ]);
+          var ci2=chartImg;
+          doc.autoTable({startY:pageY,margin:{left:mx,right:8},body:tb2,theme:"grid",styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2},
+            didDrawCell:function(data){if(data.row.index===1&&data.column.index===1&&ci2){try{doc.addImage(ci2,"PNG",data.cell.x+2,data.cell.y+1,data.cell.width-4,data.cell.height-2)}catch(e){}}}
+          });
+          pageY=doc.lastAutoTable.finalY+3;
+        }else if(chartImg){
+          try{doc.addImage(chartImg,"PNG",mx+60,pageY,120,40)}catch(e){}
+          pageY+=44;
         }
-        var cc=chartCol;var ci=chartImg;
-        doc.autoTable({startY:y,margin:{left:mx,right:6},body:tableBody,theme:"grid",
-          styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2},
-          didDrawCell:function(data){
-            if(data.row.index===1&&data.column.index===cc&&ci){
-              try{doc.addImage(ci,"PNG",data.cell.x+1,data.cell.y+1,data.cell.width-2,data.cell.height-2)}catch(e){}
-            }
-          }
-        });
-        y=doc.lastAutoTable.finalY+6;
+        // Descrizione/commento
+        if(ind.descrCommento){
+          checkPage(15);
+          doc.setFontSize(7);doc.setFont(undefined,"italic");doc.setTextColor(80);
+          var cmtLines=doc.splitTextToSize(ind.descrCommento,W-20);
+          doc.text(cmtLines,mx+2,pageY+3);pageY+=cmtLines.length*3+4;
+        }
+        pageY+=3;
       });
     }
-    y+=4;
+    // ═══ 1.X.3 Sezione riepilogativa ═══
+    checkPage(30);
+    tocEntries.push({level:2,text:sectNum(1,chNum,3)+" Sezione riepilogativa",page:doc.getNumberOfPages()});
+    doc.setTextColor(142,68,173);doc.setFontSize(10);doc.setFont(undefined,"bold");
+    doc.text(sectNum(1,chNum,3)+" Sezione riepilogativa caratteristiche OVP",mx,pageY+4);pageY+=7;
+    doc.setFontSize(7);doc.setFont(undefined,"italic");doc.setTextColor(100);
+    doc.text("Sintesi delle caratteristiche degli obiettivi strategici e operativi collegati a questo OVP.",mx+2,pageY+3);pageY+=6;
+    doc.setTextColor(0);
+    // ── 1.X.3.1 Missioni e Programmi ──
+    checkPage(20);
+    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.text(sectNum(1,chNum,3,1)+" Missioni e Programmi",mx,pageY+4);pageY+=6;
+    var misFreq=freq(linkedStrs.map(function(s){return s.data.missione?window._misFull?window._misFull(s.data.missione):"M"+s.data.missione:""}));
+    var proFreq=freq(linkedStrs.map(function(s){return s.data.programma?window._proFull?window._proFull(s.data.programma):"P"+s.data.programma:""}));
+    if(misFreq.length||proFreq.length){
+      var mpBody=[];misFreq.forEach(function(f){mpBody.push(["Missione",f.label,f.count+""])});
+      proFreq.forEach(function(f){mpBody.push(["Programma",f.label,f.count+""])});
+      doc.autoTable({startY:pageY,margin:{left:mx,right:8},head:[["Tipo","Denominazione","Frequenza"]],body:mpBody,theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+      pageY=doc.lastAutoTable.finalY+4;
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("Nessuna missione/programma associato",mx+4,pageY+3);pageY+=6;}
+    // ── 1.X.3.2 Dimensioni di Impatto ──
+    checkPage(15);
+    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.text(sectNum(1,chNum,3,2)+" Dimensioni di Impatto",mx,pageY+4);pageY+=6;
+    var impFreq=freq(linkedStrs.flatMap(function(s){return(s.data.impatto||[])}));
+    if(impFreq.length){
+      doc.autoTable({startY:pageY,margin:{left:mx,right:8},head:[["Dimensione","Frequenza"]],body:impFreq.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+      pageY=doc.lastAutoTable.finalY+4;
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("Nessuna dimensione di impatto",mx+4,pageY+3);pageY+=6;}
+    // ── 1.X.3.3 Livello territoriale ──
+    checkPage(15);
+    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.text(sectNum(1,chNum,3,3)+" Livello territoriale",mx,pageY+4);pageY+=6;
+    var lvFreq=freq(linkedStrs.map(function(s){return s.data.livTerr||""}));
+    if(lvFreq.length){
+      doc.autoTable({startY:pageY,margin:{left:mx,right:8},head:[["Livello","Frequenza"]],body:lvFreq.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+      pageY=doc.lastAutoTable.finalY+4;
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("Nessun livello territoriale",mx+4,pageY+3);pageY+=6;}
+    // ── 1.X.3.4 BES ──
+    checkPage(15);
+    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.text(sectNum(1,chNum,3,4)+" BES",mx,pageY+4);pageY+=6;
+    var besT=freq(linkedStrs.map(function(s){return(s.data.besTipo||[]).join(", ")||""}));
+    var besD=freq(linkedStrs.flatMap(function(s){return s.data.besDomini||[]}));
+    if(besT.length||besD.length){
+      var besBody=[];besT.forEach(function(f){if(f.label)besBody.push(["Tipo BES",f.label,f.count+""])});
+      besD.forEach(function(f){if(f.label)besBody.push(["Dominio BES",f.label,f.count+""])});
+      if(besBody.length){
+        doc.autoTable({startY:pageY,margin:{left:mx,right:8},head:[["Categoria","Valore","Frequenza"]],body:besBody,theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+        pageY=doc.lastAutoTable.finalY+4;
+      }
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("Nessun dato BES",mx+4,pageY+3);pageY+=6;}
+    // ── Da Obiettivi Operativi ──
+    if(linkedOprIds.length){
+      checkPage(15);
+      doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+      doc.text("Dagli Obiettivi Operativi collegati ("+linkedOprIds.length+")",mx,pageY+4);pageY+=6;
+      var natFreq=freq(linkedOprIds.flatMap(function(o){var n=o.data.natura;return Array.isArray(n)?n:n?[n]:[]}));
+      var riskFreq=freq(linkedOprIds.map(function(o){return o.data.rischioLivello||""}));
+      var oprBody=[];
+      natFreq.forEach(function(f){if(f.label)oprBody.push(["Natura/Dimensione VP",f.label,f.count+""])});
+      riskFreq.forEach(function(f){if(f.label)oprBody.push(["Livello Rischio",f.label,f.count+""])});
+      if(oprBody.length){
+        doc.autoTable({startY:pageY,margin:{left:mx,right:8},head:[["Categoria","Valore","Frequenza"]],body:oprBody,theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,135,88],textColor:255}});
+        pageY=doc.lastAutoTable.finalY+4;
+      }
+    }
   });
+  // ══ TOC ══
+  doc.setPage(tocPageNum);
+  var ty=22;
+  doc.setTextColor(0,51,102);doc.setFontSize(14);doc.setFont(undefined,"bold");
+  doc.text("Indice",mx,ty+6);ty+=12;
+  tocEntries.forEach(function(e){
+    doc.setFontSize(e.level===1?9:8);doc.setFont(undefined,e.level===1?"bold":"normal");
+    doc.setTextColor(e.level===1?0:80);
+    var indent=e.level===1?0:6;
+    doc.text(e.text.substring(0,95),mx+indent,ty+3);
+    doc.text("pag. "+e.page,W-mx-2,ty+3,{align:"right"});
+    ty+=e.level===1?5:4;
+    if(ty>H-10){doc.addPage("a4","landscape");addHeader();ty=22;}
+  });
+  // ══ PAGE NUMBERS ══
   var tp=doc.getNumberOfPages();
   for(var pg=1;pg<=tp;pg++){
-    doc.setPage(pg);doc.setFontSize(7);doc.setTextColor(100);doc.setFont(undefined,"normal");
+    doc.setPage(pg);doc.setFontSize(7);doc.setTextColor(120);doc.setFont(undefined,"normal");
     doc.text("Pag. "+pg+" di "+tp,W-mx,H-4,{align:"right"});
+    doc.text("Piano della Performance Organizzativa 2026-2028 - Regione Molise",mx,H-4);
   }
-  doc.save("OVP_Indicatori_PIAO_"+new Date().toISOString().slice(0,10)+".pdf");
+  doc.save("OVP_PIAO_"+new Date().toISOString().slice(0,10)+".pdf");
 };
 
 window._exportReport=function(){
@@ -2067,7 +2159,27 @@ function OVPDataEditor(p){
           )
         )
       ),
-      h("button",{onClick:addRow,style:{padding:"4px 10px",fontSize:10,background:"#8e44ad",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600,marginBottom:8}},"+ Aggiungi Riga"),
+      h("div",{style:{display:"flex",gap:8,alignItems:"center",marginBottom:8,flexWrap:"wrap"}},
+        h("button",{onClick:addRow,style:{padding:"4px 10px",fontSize:10,background:"#8e44ad",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600}},"+ Aggiungi Riga"),
+        h("label",{style:{padding:"4px 10px",fontSize:10,background:"#0066cc",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600}},
+          "Importa CSV",
+          h("input",{type:"file",accept:".csv,.tsv,.txt",style:{display:"none"},onChange:function(e){
+            var file=e.target.files[0];if(!file)return;
+            var reader=new FileReader();
+            reader.onload=function(ev){
+              var text=ev.target.result;var sep=text.indexOf("\t")>=0?"\t":(text.indexOf(";")>=0?";":"\,");
+              var lines=text.trim().split("\n").map(function(l){return l.split(sep).map(function(c){return c.trim().replace(/^"|"$/g,"")})});
+              if(lines.length<2){alert("Il file deve avere almeno intestazione + 1 riga");return}
+              saveTab({headers:lines[0],rows:lines.slice(1),rowLabels:tbl.rowLabels});
+            };
+            reader.readAsText(file);e.target.value="";
+          }})
+        )
+      ),
+      h("div",{style:{marginBottom:8}},
+        h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2,color:"#5c6f82"}},"Descrizione / Commento al grafico"),
+        h("textarea",{style:{width:"100%",padding:6,border:"1px solid #d9dadb",borderRadius:3,fontSize:11,minHeight:50,fontFamily:"inherit",resize:"vertical"},value:ind.descrCommento||"",onChange:function(e){uInd("descrCommento",e.target.value)},placeholder:"Inserire una descrizione o commento a supporto della lettura dei dati rappresentati nel grafico..."})
+      ),
       // ── CHART PREVIEW ──
       h("div",{style:{marginTop:8,padding:8,background:"#fff",border:"1px solid #e8ecf1",borderRadius:4}},
         h("div",{style:{fontSize:9,fontWeight:700,color:"#5c6f82",marginBottom:6}},"Anteprima grafico"),
@@ -3598,7 +3710,7 @@ function App(){
           // Each OVP card
           ovps.map(function(ovp,oi){
             var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
-            var unlinkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef!==ovp.id});
+            var unlinkedStrs=subs.filter(function(s){return s.type==="strategic"&&(!s.data.ovpRef||s.data.ovpRef==="")}).sort(function(a,b){return(a.data.codice||"").localeCompare(b.data.codice||"")});
             return h("div",{key:ovp.id,className:"cd",style:{marginBottom:14,borderLeft:"4px solid #8e44ad"}},
               // Header
               h("div",{style:{padding:"10px 14px",background:"#f5f0fa",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
@@ -3607,7 +3719,9 @@ function App(){
                     h("input",{style:{fontWeight:700,fontSize:14,color:"#8e44ad",border:"none",background:"transparent",width:70},value:ovp.cod,onChange:function(e){updateOvp(ovp.id,{cod:e.target.value})}}),
                     h("span",{className:"tag tag-str"},"STR: "+linkedStrs.length)
                   ),
-                  h("textarea",{style:{width:"100%",padding:6,border:"1px solid #d9dadb",borderRadius:3,fontSize:11,minHeight:36,fontFamily:"inherit",resize:"vertical"},value:ovp.nome,onChange:function(e){updateOvp(ovp.id,{nome:e.target.value})}})
+                  h("textarea",{style:{width:"100%",padding:6,border:"1px solid #d9dadb",borderRadius:3,fontSize:11,minHeight:36,fontFamily:"inherit",resize:"vertical"},value:ovp.nome,onChange:function(e){updateOvp(ovp.id,{nome:e.target.value})}}),
+                  h("div",{style:{fontSize:9,fontWeight:600,marginTop:6,marginBottom:2,color:"#5c6f82"}},"Descrizione OVP"),
+                  h("textarea",{style:{width:"100%",padding:6,border:"1px solid #d9dadb",borderRadius:3,fontSize:11,minHeight:50,fontFamily:"inherit",resize:"vertical"},value:ovp.descrizione||"",onChange:function(e){updateOvp(ovp.id,{descrizione:e.target.value})},placeholder:"Descrizione dettagliata dell'Obiettivo di Valore Pubblico..."})
                 ),
                 h("button",{onClick:function(){removeOvp(ovp.id)},style:{padding:"4px 8px",background:"#d9364f",color:"#fff",border:"none",borderRadius:3,fontSize:10,cursor:"pointer"}},"Elimina")
               ),
@@ -3616,7 +3730,7 @@ function App(){
                 h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
                   h("div",{style:{fontWeight:600,fontSize:11,color:"#5c6f82"}},"Indicatori ("+ovp.indicatori.length+")"),
                   h("button",{onClick:function(){
-                    var ni=ovp.indicatori.concat([{nome:"",descrInd:"",formula:"",fonte:"",baseline:"",t1:"",t2:"",t3:"",tipo:"Output",bes:"",tabData:"",chartType:"bar"}]);
+                    var ni=ovp.indicatori.concat([{nome:"",descrInd:"",formula:"",fonte:"",baseline:"",t1:"",t2:"",tipo:"Output",bes:"",tabData:"",chartType:"bar",descrCommento:""}]);
                     updateOvp(ovp.id,{indicatori:ni});
                   },style:{padding:"2px 8px",fontSize:9,background:"#8e44ad",color:"#fff",border:"none",borderRadius:3,cursor:"pointer"}},"+ Indicatore")
                 ),
@@ -3640,13 +3754,11 @@ function App(){
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Formula"),h("textarea",{style:TS3,value:ind.formula||"",onChange:function(e){uInd("formula",e.target.value)}})),
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Fonte"),h("textarea",{style:TS3,value:ind.fonte||"",onChange:function(e){uInd("fonte",e.target.value)}}))
                     ),
-                    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr 1fr",gap:6,marginBottom:6}},
+                    h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginBottom:6}},
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Baseline"),h("input",{style:IS3,value:ind.baseline||"",onChange:function(e){uInd("baseline",e.target.value)}})),
-                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2,color:"#0066cc"}},"Target 2026"),h("input",{style:Object.assign({},IS3,{fontWeight:700,color:"#0066cc"}),value:ind.t1||"",onChange:function(e){uInd("t1",e.target.value)}})),
-                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Target 2027"),h("input",{style:IS3,value:ind.t2||"",onChange:function(e){uInd("t2",e.target.value)}})),
-                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Target 2028"),h("input",{style:IS3,value:ind.t3||"",onChange:function(e){uInd("t3",e.target.value)}})),
-                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Tipo"),h("select",{style:IS3,value:ind.tipo||"",onChange:function(e){uInd("tipo",e.target.value)}},h("option",{value:"Output"},"Output"),h("option",{value:"Outcome"},"Outcome"))),
-                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"BES/PNRR"),h("input",{style:IS3,value:ind.bes||"",onChange:function(e){uInd("bes",e.target.value)}}))
+                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2,color:"#0066cc"}},"Obiettivo Target / Risultato Atteso"),h("input",{style:Object.assign({},IS3,{fontWeight:700,color:"#0066cc"}),value:ind.t1||"",onChange:function(e){uInd("t1",e.target.value)}})),
+                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Data conseguimento Risultato Atteso"),h("input",{type:"date",style:IS3,value:ind.t2||"",onChange:function(e){uInd("t2",e.target.value)}})),
+                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Tipo"),h("select",{style:IS3,value:ind.tipo||"",onChange:function(e){uInd("tipo",e.target.value)}},h("option",{value:"Output"},"Output"),h("option",{value:"Outcome"},"Outcome")))
                     ),
                     h(OVPDataEditor,{ind:ind,uInd:uInd})
                   )

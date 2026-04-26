@@ -1789,7 +1789,7 @@ window._exportOVPpiao=function(){
   doc.text("Indice",mx,ty+6);ty+=12;
   tocEntries.forEach(function(e){
     doc.setFontSize(e.level===1?9:8);doc.setFont(undefined,e.level===1?"bold":"normal");
-    doc.setTextColor(e.level===1?[142,68,173]:[80,80,80]);
+    if(e.level===1){doc.setTextColor(142,68,173)}else{doc.setTextColor(80,80,80)}
     var indent=e.level===1?0:8;
     doc.text(e.text.substring(0,100),mx+indent,ty+3);
     doc.text("pag. "+e.page,W-mx-2,ty+3,{align:"right"});
@@ -3883,7 +3883,7 @@ function App(){
                     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginBottom:6}},
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Baseline"),h("input",{style:IS3,value:ind.baseline||"",onChange:function(e){uInd("baseline",e.target.value)}})),
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2,color:"#0066cc"}},"Obiettivo Target / Risultato Atteso"),h("input",{style:Object.assign({},IS3,{fontWeight:700,color:"#0066cc"}),value:ind.t1||"",onChange:function(e){uInd("t1",e.target.value)}})),
-                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Data conseguimento Risultato Atteso"),h("input",{type:"date",style:IS3,value:ind.t2||"",onChange:function(e){uInd("t2",e.target.value)}})),
+                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Data conseguimento Risultato Atteso"),h("input",{style:IS3,value:ind.t2||"",onChange:function(e){uInd("t2",e.target.value)},placeholder:"es. 2026-12-31"})),
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Tipo"),h("select",{style:IS3,value:ind.tipo||"",onChange:function(e){uInd("tipo",e.target.value)}},h("option",{value:"Output"},"Output"),h("option",{value:"Outcome"},"Outcome")))
                     ),
                     h(OVPDataEditor,{ind:ind,uInd:uInd})

@@ -1503,6 +1503,7 @@ window._exportOVPpdf=function(){
 
 // Esporta PDF stile PIAO: Indicatori di Outcome con tabella valori + grafico
 window._exportOVPpiao=function(){
+  try{
   var ovps=window._loadOVP()||[];var subs=window._SUBS;
   if(!ovps.length){alert("Nessun OVP definito");return}
   var renderChart=function(ind,tbl){
@@ -1800,6 +1801,7 @@ window._exportOVPpiao=function(){
   var tp=doc.getNumberOfPages();
   for(var pg=1;pg<=tp;pg++){addFooter(pg,tp)}
   doc.save("PIAO_OVP_"+new Date().toISOString().slice(0,10)+".pdf");
+  }catch(err){alert("Errore generazione PDF PIAO:\n"+err.message+"\n\nRiga: "+(err.stack||"").split("\n").slice(0,3).join("\n"));console.error("PIAO PDF error:",err)}
 };
 
 window._exportReport=function(){

@@ -1509,8 +1509,8 @@ window._exportOVPpiao=function(){
   var renderChart=function(ind,tbl){
     try{
       if(!window.Chart)return null;
-      var cvs=document.createElement("canvas");cvs.width=800;cvs.height=500;
-      var ctx=cvs.getContext("2d");ctx.fillStyle="#ffffff";ctx.fillRect(0,0,800,500);
+      var cvs=document.createElement("canvas");cvs.width=1000;cvs.height=600;
+      var ctx=cvs.getContext("2d");ctx.fillStyle="#ffffff";ctx.fillRect(0,0,1000,600);
       var labels=[];var datasets=[];
       if(tbl&&tbl.headers&&tbl.rows){
         labels=ind.useRowLabels&&tbl.rowLabels?tbl.rowLabels:tbl.headers;
@@ -1527,19 +1527,20 @@ window._exportOVPpiao=function(){
       var type=(ind.chartType==="histogram"||ind.chartType==="stackedBar")?"bar":ind.chartType||"bar";
       var stacked=ind.chartType==="stackedBar";
       var colors=["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#1abc9c","#f39c12"];
-      var chart=new window.Chart(cvs,{type:type,data:{labels:labels,datasets:datasets.map(function(ds,i){return{label:ds.label,data:ds.values,backgroundColor:type==="line"?"rgba(0,51,102,0.15)":(type==="pie"?colors:colors[i%colors.length]),borderColor:colors[i%colors.length],borderWidth:type==="line"?3:1,tension:0.3,fill:type==="line",pointRadius:type==="line"?5:0,pointBackgroundColor:colors[i%colors.length]}})},options:{responsive:false,animation:false,devicePixelRatio:2,plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||"",font:{size:16,weight:"bold"},color:"#003366",padding:12},legend:{display:ind.showLegend!==false,position:"bottom",labels:{font:{size:13},padding:14,usePointStyle:true}}},scales:type==="pie"?{}:{y:{beginAtZero:true,stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||"",font:{size:13}},ticks:{font:{size:12}},grid:{color:"rgba(0,0,0,0.08)"}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||"",font:{size:13}},ticks:{font:{size:12}},grid:{display:false}}}}});
+      var chart=new window.Chart(cvs,{type:type,data:{labels:labels,datasets:datasets.map(function(ds,i){return{label:ds.label,data:ds.values,backgroundColor:type==="line"?"rgba(0,51,102,0.15)":(type==="pie"?colors:colors[i%colors.length]),borderColor:colors[i%colors.length],borderWidth:type==="line"?3:1,tension:0.3,fill:type==="line",pointRadius:type==="line"?6:0,pointBackgroundColor:colors[i%colors.length]}})},options:{responsive:false,animation:false,devicePixelRatio:3,plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||"",font:{size:18,weight:"bold"},color:"#003366",padding:16},legend:{display:ind.showLegend!==false,position:"bottom",labels:{font:{size:14},padding:16,usePointStyle:true}}},scales:type==="pie"?{}:{y:{beginAtZero:true,stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||"",font:{size:14,weight:"bold"}},ticks:{font:{size:13},padding:6},grid:{color:"rgba(0,0,0,0.08)"}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||"",font:{size:14,weight:"bold"}},ticks:{font:{size:13},maxRotation:45,padding:6},grid:{display:false}}}}});
       var img=cvs.toDataURL("image/png",1.0);chart.destroy();return img;
     }catch(e){console.warn("Chart error:",e);return null}
   };
   var freq=function(arr){var m={};arr.forEach(function(v){if(v)m[v]=(m[v]||0)+1});return Object.keys(m).sort().map(function(k){return{label:k,count:m[k]}})};
+  var RC=[200,0,0];// Red color for headers
   var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
   var W=297,H=210,mx=10;var pageY;var tocEntries=[];var firstPage=true;
   var addHeader=function(){
     if(firstPage)return;
     try{doc.addImage(window.LOGO_MD,"PNG",W-mx-12,3,10,10)}catch(e){}
-    doc.setTextColor(142,68,173);doc.setFontSize(8);doc.setFont(undefined,"italic");
+    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(8);doc.setFont(undefined,"italic");
     doc.text("Piano di Attivit\u00e0 e Organizzazione 2026/2028 della Regione Molise",W-mx-14,9,{align:"right"});
-    doc.setDrawColor(142,68,173);doc.line(mx,15,W-mx,15);
+    doc.setDrawColor(RC[0],RC[1],RC[2]);doc.line(mx,15,W-mx,15);
     pageY=20;
   };
   var addFooter=function(pg,tp){
@@ -1553,10 +1554,10 @@ window._exportOVPpiao=function(){
   // ═══ TITLE PAGE ═══
   pageY=20;
   try{doc.addImage(window.LOGO_MD,"PNG",W/2-15,35,30,30)}catch(e){}
-  doc.setTextColor(142,68,173);doc.setFontSize(22);doc.setFont(undefined,"bold");
+  doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(22);doc.setFont(undefined,"bold");
   doc.text("PIANO DI ATTIVIT\u00c0 E ORGANIZZAZIONE",W/2,80,{align:"center"});
   doc.text("2026 / 2028",W/2,92,{align:"center"});
-  doc.setTextColor(0,51,102);doc.setFontSize(14);doc.setFont(undefined,"normal");
+  doc.setTextColor(0,0,0);doc.setFontSize(14);doc.setFont(undefined,"normal");
   doc.text("Obiettivi di Valore Pubblico",W/2,108,{align:"center"});
   doc.text("Indicatori di Outcome",W/2,116,{align:"center"});
   doc.setFontSize(12);doc.setTextColor(100);
@@ -1569,11 +1570,14 @@ window._exportOVPpiao=function(){
     var chNum=oi+1;
     var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
     var linkedOprs=[];linkedStrs.forEach(function(s){subs.forEach(function(o){if(o.type==="operative"&&o.parentId===s.id)linkedOprs.push(o)})});
+    // Collect missioni for recap
+    var misSet={};linkedStrs.forEach(function(s){if(s.data.missione)misSet["M"+s.data.missione]=true});
+    var misKeys=Object.keys(misSet).sort();
     // ═══ 1.chNum OVP PAGE ═══
     doc.addPage("a4","landscape");firstPage=false;addHeader();
     var fullTitle=sn(1,chNum)+" "+ovp.cod+" - "+ovp.nome;
     tocEntries.push({level:1,text:fullTitle.substring(0,100),page:doc.getNumberOfPages()});
-    doc.setFillColor(142,68,173);
+    doc.setFillColor(RC[0],RC[1],RC[2]);
     var titleLines=doc.splitTextToSize(fullTitle,W-24);
     var titleH=Math.max(8,titleLines.length*5+3);
     doc.rect(mx,pageY,W-20,titleH,"F");
@@ -1581,77 +1585,79 @@ window._exportOVPpiao=function(){
     doc.text(titleLines,mx+3,pageY+5);pageY+=titleH+4;
     // ═══ 1.chNum.1 Descrizione ═══
     tocEntries.push({level:2,text:sn(1,chNum,1)+" Descrizione",page:doc.getNumberOfPages()});
-    doc.setTextColor(142,68,173);doc.setFontSize(10);doc.setFont(undefined,"bold");
+    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont(undefined,"bold");
     doc.text(sn(1,chNum,1)+" Descrizione",mx,pageY+4);pageY+=7;
     doc.setTextColor(0);doc.setFontSize(8);doc.setFont(undefined,"normal");
     var descLines=doc.splitTextToSize(ovp.descrizione||ovp.nome||"",W-24);
     doc.text(descLines,mx+2,pageY+3);pageY+=descLines.length*3.5+4;
-    // Stats box
-    doc.setFillColor(245,240,250);doc.rect(mx,pageY,W-20,16,"F");
-    doc.setDrawColor(142,68,173);doc.rect(mx,pageY,W-20,16,"S");
+    // Stats box with Missioni
+    doc.setFillColor(248,245,245);doc.rect(mx,pageY,W-20,16,"F");
+    doc.setDrawColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,16,"S");
     doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(60);
     doc.text("Obiettivi Strategici collegati: "+linkedStrs.length,mx+4,pageY+5);
     doc.text("Obiettivi Operativi che concorrono: "+linkedOprs.length,mx+4,pageY+11);
     doc.text("Indicatori di misurazione: "+ovp.indicatori.length,mx+140,pageY+5);
+    doc.text("Missioni di riferimento: "+(misKeys.length?misKeys.join(", "):"—"),mx+140,pageY+11);
     pageY+=20;
     // ═══ 1.chNum.2 Indicatori ═══
     if(ovp.indicatori.length){
       tocEntries.push({level:2,text:sn(1,chNum,2)+" Indicatori",page:doc.getNumberOfPages()});
-      doc.setTextColor(142,68,173);doc.setFontSize(10);doc.setFont(undefined,"bold");
+      doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont(undefined,"bold");
       doc.text(sn(1,chNum,2)+" Indicatori",mx,pageY+4);pageY+=8;
       ovp.indicatori.forEach(function(ind,ii){
         checkPage(60);
         var tbl=null;try{tbl=JSON.parse(ind.tabData)}catch(e){}
         var chartImg=renderChart(ind,tbl);
         // Indicator header
-        doc.setFillColor(200,0,0);doc.rect(mx,pageY,W-20,5,"F");
+        doc.setFillColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,5,"F");
         doc.setTextColor(255);doc.setFontSize(8);doc.setFont(undefined,"bold");
         doc.text("Indicatore "+(ii+1)+": "+(ind.nome||""),mx+3,pageY+3.5);pageY+=7;
-        // Row 1: Nome, Formula, Fonte, Baseline, Target, Data
+        // Row 1: table
         var tb1=[];
         tb1.push([
-          {content:"Indicatore",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255]}},
-          {content:"Formula",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255]}},
-          {content:"Fonte",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255]}},
-          {content:"Baseline",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255]}},
-          {content:"Obiettivo Target\nRisultato Atteso",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255]}},
-          {content:"Data prevista\nconseguimento",styles:{fontStyle:"bold",fillColor:[200,0,0],textColor:[255,255,255]}}
+          {content:"Indicatore",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
+          {content:"Formula",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
+          {content:"Fonte",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
+          {content:"Baseline",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
+          {content:"Obiettivo Target\nRisultato Atteso",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
+          {content:"Data prevista\nconseguimento",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}}
         ]);
         tb1.push([ind.nome||"",ind.formula||"",ind.fonte||"",ind.baseline||"",ind.t1||"",ind.t2||""]);
-        // Row 2: Descrizione indicatore (full row)
         if(ind.descrInd){
-          tb1.push([{content:"Descrizione: "+(ind.descrInd||""),colSpan:6,styles:{fontStyle:"italic",fontSize:6.5}}]);
+          tb1.push([{content:"Descrizione indicatore: "+(ind.descrInd||""),colSpan:6,styles:{fontStyle:"italic",fontSize:6.5}}]);
         }
         doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:tb1,theme:"grid",styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2,overflow:"linebreak"}});
         pageY=doc.lastAutoTable.finalY+4;
-        // ── Chart section: 2 columns ──
-        checkPage(55);
+        // ── Chart section ──
+        checkPage(70);
         if(tbl&&tbl.headers&&tbl.rows){
-          var valTxt=tbl.headers.join(" | ")+"\n";
-          tbl.rows.forEach(function(row){valTxt+=row.join(" | ")+"\n"});
-          var tb2=[];
-          tb2.push([
-            {content:"Dati di riferimento",styles:{fontStyle:"bold",fillColor:[80,80,80],textColor:255,halign:"center"}},
-            {content:"Rappresentazione grafica",styles:{fontStyle:"bold",fillColor:[80,80,80],textColor:255,halign:"center"}}
-          ]);
-          tb2.push([
-            {content:valTxt,styles:{fontSize:6.5,valign:"top"}},
-            {content:"",styles:{minCellHeight:50}}
-          ]);
-          var ci2=chartImg;
-          doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:tb2,theme:"grid",columnStyles:{0:{cellWidth:130},1:{cellWidth:150}},styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2,overflow:"linebreak"},
-            didDrawCell:function(data){if(data.row.index===1&&data.column.index===1&&ci2){try{doc.addImage(ci2,"PNG",data.cell.x+2,data.cell.y+1,data.cell.width-4,data.cell.height-2)}catch(e){}}}
+          // Data table with row labels
+          var dataRows=[];
+          var hdrs=[""].concat(tbl.headers);
+          dataRows.push(hdrs.map(function(h){return{content:h,styles:{fontStyle:"bold",fillColor:[60,60,60],textColor:255,fontSize:6.5}}}));
+          tbl.rows.forEach(function(row,ri){
+            var rl=tbl.rowLabels&&tbl.rowLabels[ri]?tbl.rowLabels[ri]:"R"+(ri+1);
+            dataRows.push([{content:rl,styles:{fontStyle:"bold",fontSize:6.5}}].concat(row.map(function(v){return{content:v+"",styles:{fontSize:6.5,halign:"center"}}})));
           });
+          doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:dataRows,theme:"grid",styles:{fontSize:6.5,cellPadding:1.5,lineColor:[180,180,180],lineWidth:0.2}});
           pageY=doc.lastAutoTable.finalY+3;
+          // Chart image full width
+          if(chartImg){
+            checkPage(70);
+            var cW=W-20-20;var cH=cW*0.5;if(cH>65)cH=65;
+            try{doc.addImage(chartImg,"PNG",mx+10,pageY,cW,cH)}catch(e){}
+            pageY+=cH+4;
+          }
         }else if(chartImg){
-          try{doc.addImage(chartImg,"PNG",mx+50,pageY,160,55)}catch(e){}
-          pageY+=58;
+          var cW2=180;var cH2=60;
+          try{doc.addImage(chartImg,"PNG",mx+30,pageY,cW2,cH2)}catch(e){}
+          pageY+=cH2+4;
         }
         if(ind.descrCommento){
           checkPage(15);
-          doc.setFillColor(250,248,255);doc.rect(mx,pageY,W-20,3+doc.splitTextToSize(ind.descrCommento,W-26).length*3,"F");
-          doc.setFontSize(7);doc.setFont(undefined,"italic");doc.setTextColor(60);
           var cmtL=doc.splitTextToSize(ind.descrCommento,W-26);
+          doc.setFillColor(248,245,245);doc.rect(mx,pageY,W-20,3+cmtL.length*3,"F");
+          doc.setFontSize(7);doc.setFont(undefined,"italic");doc.setTextColor(60);
           doc.text(cmtL,mx+3,pageY+3);pageY+=cmtL.length*3+5;
         }
         pageY+=3;
@@ -1660,29 +1666,26 @@ window._exportOVPpiao=function(){
     // ═══ 1.chNum.3 Sezione riepilogativa ═══
     checkPage(25);
     tocEntries.push({level:2,text:sn(1,chNum,3)+" Sezione riepilogativa",page:doc.getNumberOfPages()});
-    doc.setTextColor(142,68,173);doc.setFontSize(10);doc.setFont(undefined,"bold");
+    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont(undefined,"bold");
     doc.text(sn(1,chNum,3)+" Sezione riepilogativa caratteristiche OVP",mx,pageY+4);pageY+=6;
     doc.setFontSize(7);doc.setFont(undefined,"italic");doc.setTextColor(100);
     doc.text("Sintesi delle caratteristiche degli obiettivi strategici e operativi che concorrono alla realizzazione dell'OVP.",mx+2,pageY+3);pageY+=7;
     doc.setTextColor(0);
-    // ── 3.1 Missioni e Programmi (hierarchical) ──
+    // ── 3.1 Missioni e Programmi ──
     checkPage(20);
     doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
     doc.text(sn(1,chNum,3,1)+" Missioni e Programmi",mx,pageY+4);pageY+=6;
-    // Build hierarchical structure
     var misProg={};
     linkedStrs.forEach(function(s){
       var mk=s.data.missione||"";if(!mk)return;
       var mLabel=window._misFull?window._misFull(mk):"Missione "+mk;
       if(!misProg[mLabel])misProg[mLabel]={count:0,progs:{},strs:[]};
-      misProg[mLabel].count++;
-      misProg[mLabel].strs.push(s);
+      misProg[mLabel].count++;misProg[mLabel].strs.push(s);
       var pk=s.data.programma||"";
       if(pk){
         var pLabel=window._proFull?window._proFull(pk):"Programma "+pk;
         if(!misProg[mLabel].progs[pLabel])misProg[mLabel].progs[pLabel]={count:0,strs:[]};
-        misProg[mLabel].progs[pLabel].count++;
-        misProg[mLabel].progs[pLabel].strs.push(s);
+        misProg[mLabel].progs[pLabel].count++;misProg[mLabel].progs[pLabel].strs.push(s);
       }
     });
     var mpKeys=Object.keys(misProg).sort();
@@ -1695,7 +1698,7 @@ window._exportOVPpiao=function(){
           var pd=md.progs[pk];
           mpBody.push([{content:"    "+pk+" (frequenza: "+pd.count+")",colSpan:2,styles:{fontSize:6.5,fillColor:[245,248,255]}}]);
           pd.strs.forEach(function(s){
-            mpBody.push([{content:"        \u2022 "+s.serviceCode+" - "+(s.serviceName||"")+" - "+(s.data.codice||""),colSpan:2,styles:{fontSize:6,textColor:[100,100,100]}}]);
+            mpBody.push([{content:"        \u2022 "+s.serviceCode+" - "+(s.serviceName||"")+" — "+(s.data.codice||"")+" "+(s.data.nome||""),colSpan:2,styles:{fontSize:6,textColor:[100,100,100]}}]);
           });
         });
       });
@@ -1710,7 +1713,7 @@ window._exportOVPpiao=function(){
     if(impFreq.length){
       doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Dimensione","Frequenza"]],body:impFreq.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       pageY=doc.lastAutoTable.finalY+4;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("Nessuna dimensione di impatto.",mx+4,pageY+3);pageY+=6;}
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);pageY+=6;}
     // ── 3.3 Livello territoriale ──
     checkPage(15);
     doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
@@ -1731,48 +1734,66 @@ window._exportOVPpiao=function(){
       doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Categoria","Valore","Frequenza"]],body:besBody,theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       pageY=doc.lastAutoTable.finalY+4;
     }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);pageY+=6;}
-    // ── Dagli Obiettivi Operativi: grouped by macro-category ──
+    // ── Dagli Obiettivi Operativi collegati ──
     if(linkedOprs.length){
       checkPage(20);
-      doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,135,88);
+      doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
       doc.text("Dagli Obiettivi Operativi collegati ("+linkedOprs.length+")",mx,pageY+4);pageY+=6;
-      // Group natura by macro categories
-      var natGroups={"Efficacia":["quantit\u00e0 erogata","quantit\u00e0 fruita","qualit\u00e0 erogata","qualit\u00e0 percepita"],"Efficienza":["eco-finanziaria","strumentale","produttiva","temporale"],"Salute delle Risorse":["di clima e di genere","di genere","digitale","economico-finanziaria","organizzativa","organizzativa agile","professionale"]};
+      // Collect all natura values - parse "MACRO - sub" format
       var allNat=linkedOprs.flatMap(function(o){var n=o.data.natura;return Array.isArray(n)?n:n?[n]:[]});
       var natBody=[];
-      Object.keys(natGroups).forEach(function(macro){
-        var subs2=natGroups[macro];
-        var macroCount=0;var subRows=[];
-        subs2.forEach(function(sub){
-          var cnt=allNat.filter(function(n){return n.toLowerCase()===sub.toLowerCase()}).length;
-          if(cnt>0){subRows.push(["    \u2022 "+sub,cnt+""]);macroCount+=cnt}
+      // Header row
+      natBody.push([
+        {content:"Categoria",styles:{fontStyle:"bold",fillColor:[0,51,102],textColor:255}},
+        {content:"Valore",styles:{fontStyle:"bold",fillColor:[0,51,102],textColor:255}},
+        {content:"Frequenza",styles:{fontStyle:"bold",fillColor:[0,51,102],textColor:255}}
+      ]);
+      // Parse and group by macro then sub
+      var macroMap={"EFFICACIA":{subs:{},order:1},"EFFICIENZA":{subs:{},order:2},"SALUTE DELLE RISORSE":{subs:{},order:3}};
+      allNat.forEach(function(v){
+        if(!v)return;
+        var parts=v.split(" - ");
+        var macro=(parts[0]||"").trim().toUpperCase();
+        var sub=(parts[1]||v).trim();
+        // Normalize macro
+        if(macro.indexOf("EFFICACIA")>=0)macro="EFFICACIA";
+        else if(macro.indexOf("EFFICIENZA")>=0)macro="EFFICIENZA";
+        else if(macro.indexOf("SALUTE")>=0)macro="SALUTE DELLE RISORSE";
+        if(!macroMap[macro])macroMap[macro]={subs:{},order:4};
+        macroMap[macro].subs[sub]=(macroMap[macro].subs[sub]||0)+1;
+      });
+      var sortedMacros=Object.keys(macroMap).sort(function(a,b){return(macroMap[a].order||99)-(macroMap[b].order||99)});
+      sortedMacros.forEach(function(macro){
+        var ss=macroMap[macro].subs;
+        var subKeys=Object.keys(ss).sort();
+        if(!subKeys.length)return;
+        var macroTotal=0;subKeys.forEach(function(k){macroTotal+=ss[k]});
+        natBody.push([{content:macro,colSpan:2,styles:{fontStyle:"bold",fillColor:[230,240,250],fontSize:7}},{content:macroTotal+"",styles:{fontStyle:"bold",fillColor:[230,240,250],halign:"center"}}]);
+        subKeys.forEach(function(sub){
+          natBody.push(["",{content:"\u2022 "+sub,styles:{fontSize:6.5}},{content:ss[sub]+"",styles:{halign:"center"}}]);
         });
-        if(macroCount>0){
-          natBody.push([{content:macro+" (totale: "+macroCount+")",colSpan:2,styles:{fontStyle:"bold",fillColor:[230,245,238],fontSize:7}}]);
-          subRows.forEach(function(r){natBody.push(r)});
-        }
       });
       // Risk levels
       var riskFreq=freq(linkedOprs.map(function(o){return o.data.rischioLivello||""}));
-      riskFreq.forEach(function(f){if(f.label)natBody.push(["Livello Rischio: "+f.label,f.count+""])});
-      if(natBody.length){
-        doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:natBody,theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},columnStyles:{0:{cellWidth:200},1:{cellWidth:30,halign:"center"}}});
+      riskFreq.forEach(function(f){if(f.label)natBody.push(["Rischio",f.label,f.count+""])});
+      if(natBody.length>1){
+        doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:natBody,theme:"grid",styles:{fontSize:6.5,cellPadding:1.5,lineColor:[180,180,180],lineWidth:0.2},columnStyles:{0:{cellWidth:50},1:{cellWidth:170},2:{cellWidth:35,halign:"center"}}});
         pageY=doc.lastAutoTable.finalY+4;
       }
     }
     // ═══ 1.chNum.4 Elenco Obiettivi Strategici ═══
     checkPage(20);
     tocEntries.push({level:2,text:sn(1,chNum,4)+" Elenco Obiettivi Strategici",page:doc.getNumberOfPages()});
-    doc.setTextColor(142,68,173);doc.setFontSize(9);doc.setFont(undefined,"bold");
+    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(9);doc.setFont(undefined,"bold");
     doc.text(sn(1,chNum,4)+" Elenco degli Obiettivi Strategici che concorrono alla realizzazione dell'OVP",mx,pageY+4);pageY+=7;
     if(linkedStrs.length){
       var strBody=[];
       strBody.push([
-        {content:"Codice",styles:{fontStyle:"bold",fillColor:[142,68,173],textColor:255}},
-        {content:"Servizio",styles:{fontStyle:"bold",fillColor:[142,68,173],textColor:255}},
-        {content:"Nome Obiettivo",styles:{fontStyle:"bold",fillColor:[142,68,173],textColor:255}},
-        {content:"Missione",styles:{fontStyle:"bold",fillColor:[142,68,173],textColor:255}},
-        {content:"Programma",styles:{fontStyle:"bold",fillColor:[142,68,173],textColor:255}}
+        {content:"Codice",styles:{fontStyle:"bold",fillColor:RC,textColor:255}},
+        {content:"Servizio",styles:{fontStyle:"bold",fillColor:RC,textColor:255}},
+        {content:"Nome Obiettivo",styles:{fontStyle:"bold",fillColor:RC,textColor:255}},
+        {content:"Missione",styles:{fontStyle:"bold",fillColor:RC,textColor:255}},
+        {content:"Programma",styles:{fontStyle:"bold",fillColor:RC,textColor:255}}
       ]);
       linkedStrs.forEach(function(s){
         var mis=s.data.missione?(window._misFull?window._misFull(s.data.missione):"M"+s.data.missione):"";
@@ -1786,11 +1807,11 @@ window._exportOVPpiao=function(){
   // ═══ TOC ═══
   doc.setPage(tocPageNum);
   var ty=20;
-  doc.setTextColor(142,68,173);doc.setFontSize(14);doc.setFont(undefined,"bold");
+  doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(14);doc.setFont(undefined,"bold");
   doc.text("Indice",mx,ty+6);ty+=12;
   tocEntries.forEach(function(e){
     doc.setFontSize(e.level===1?9:8);doc.setFont(undefined,e.level===1?"bold":"normal");
-    if(e.level===1){doc.setTextColor(142,68,173)}else{doc.setTextColor(80,80,80)}
+    if(e.level===1){doc.setTextColor(RC[0],RC[1],RC[2])}else{doc.setTextColor(80,80,80)}
     var indent=e.level===1?0:8;
     doc.text(e.text.substring(0,100),mx+indent,ty+3);
     doc.text("pag. "+e.page,W-mx-2,ty+3,{align:"right"});

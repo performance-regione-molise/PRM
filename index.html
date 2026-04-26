@@ -1512,7 +1512,6 @@ window._exportOVPpiao=function(){
       var hasTabData=!!(tbl&&tbl.headers&&tbl.rows);
       var cvsW=hasTabData?700:400;var cvsH=hasTabData?420:280;
       var cvs=document.createElement("canvas");cvs.width=cvsW;cvs.height=cvsH;
-      var ctx=cvs.getContext("2d");ctx.fillStyle="#ffffff";ctx.fillRect(0,0,cvsW,cvsH);
       var labels=[];var datasets=[];
       if(tbl&&tbl.headers&&tbl.rows){
         labels=ind.useRowLabels&&tbl.rowLabels?tbl.rowLabels:tbl.headers;
@@ -1529,8 +1528,9 @@ window._exportOVPpiao=function(){
       var type=(ind.chartType==="histogram"||ind.chartType==="stackedBar")?"bar":ind.chartType||"bar";
       var stacked=ind.chartType==="stackedBar";
       var colors=["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#1abc9c","#f39c12"];
-      var chart=new window.Chart(cvs,{type:type,data:{labels:labels,datasets:datasets.map(function(ds,i){return{label:ds.label,data:ds.values,backgroundColor:type==="line"?"rgba(0,51,102,0.15)":(type==="pie"?colors:colors[i%colors.length]),borderColor:colors[i%colors.length],borderWidth:type==="line"?2:1,tension:0.3,fill:type==="line",pointRadius:type==="line"?4:0,pointBackgroundColor:colors[i%colors.length]}})},options:{responsive:false,animation:false,devicePixelRatio:2,plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||"",font:{size:14,weight:"bold"},color:"#003366",padding:10},legend:{display:ind.showLegend!==false,position:"bottom",labels:{font:{size:11},padding:10,usePointStyle:true}}},scales:type==="pie"?{}:{y:{beginAtZero:true,stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:10},padding:4},grid:{color:"rgba(0,0,0,0.08)"}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:10},maxRotation:45,padding:4},grid:{display:false}}}}});
-      var img=cvs.toDataURL("image/jpeg",0.65);chart.destroy();return img;
+      var bgPlugin={id:"bgWhite",beforeDraw:function(ch){var c=ch.ctx;c.save();c.fillStyle="#ffffff";c.fillRect(0,0,ch.width,ch.height);c.restore()}};
+      var chart=new window.Chart(cvs,{type:type,plugins:[bgPlugin],data:{labels:labels,datasets:datasets.map(function(ds,i){return{label:ds.label,data:ds.values,backgroundColor:type==="line"?"rgba(0,51,102,0.15)":(type==="pie"?colors:colors[i%colors.length]),borderColor:colors[i%colors.length],borderWidth:type==="line"?2:1,tension:0.3,fill:type==="line",pointRadius:type==="line"?4:0,pointBackgroundColor:colors[i%colors.length]}})},options:{responsive:false,animation:false,devicePixelRatio:2,layout:{padding:8},plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||"",font:{size:14,weight:"bold"},color:"#003366",padding:10},legend:{display:ind.showLegend!==false,position:"bottom",labels:{font:{size:11},padding:10,usePointStyle:true}}},scales:type==="pie"?{}:{y:{beginAtZero:true,stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:10},padding:4},grid:{color:"rgba(0,0,0,0.08)"}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:10},maxRotation:45,padding:4},grid:{display:false}}}}});
+      var img=cvs.toDataURL("image/png");chart.destroy();return img;
     }catch(e){console.warn("Chart error:",e);return null}
   };
   var freq=function(arr){var m={};arr.forEach(function(v){if(v)m[v]=(m[v]||0)+1});return Object.keys(m).sort().map(function(k){return{label:k,count:m[k]}})};
@@ -1651,7 +1651,7 @@ window._exportOVPpiao=function(){
             checkPage(60);
             var cW=180;var cH=108;
             var cx=(W-20-cW)/2+mx;
-            try{doc.addImage(chartImg,"JPEG",cx,pageY,cW,cH)}catch(e){}
+            try{doc.addImage(chartImg,"PNG",cx,pageY,cW,cH)}catch(e){}
             pageY+=cH+4;
           }
         }else if(chartImg){
@@ -1659,7 +1659,7 @@ window._exportOVPpiao=function(){
           checkPage(50);
           var cW2=130;var cH2=91;
           var cx2=(W-20-cW2)/2+mx;
-          try{doc.addImage(chartImg,"JPEG",cx2,pageY,cW2,cH2)}catch(e){}
+          try{doc.addImage(chartImg,"PNG",cx2,pageY,cW2,cH2)}catch(e){}
           pageY+=cH2+4;
         }
         if(ind.descrCommento){

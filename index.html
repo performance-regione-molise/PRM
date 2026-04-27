@@ -1467,7 +1467,7 @@ window._exportOVPpdf=function(){
     // OVP title
     doc.setFillColor(142,68,173);doc.rect(mx,y,W-16,7,"F");
     doc.setTextColor(255);doc.setFontSize(10);doc.setFont(undefined,"bold");
-    doc.text(ovp.cod+" - "+ovp.nome.substring(0,90),mx+3,y+5);y+=9;
+    doc.text(ovp.cod+" - "+(ovp.nome||"").substring(0,90),mx+3,y+5);y+=9;
     // Missioni
     doc.setTextColor(0);doc.setFontSize(7);doc.setFont(undefined,"normal");
     doc.text("Missioni: "+ovp.missioni.map(function(m){return"M"+m}).join(", "),mx+2,y+3);y+=5;
@@ -1560,10 +1560,9 @@ window._exportOVPpiao=function(){
   doc.text("PIANO DI ATTIVIT\u00c0 E ORGANIZZAZIONE",W/2,80,{align:"center"});
   doc.text("2026 / 2028",W/2,92,{align:"center"});
   doc.setTextColor(0,0,0);doc.setFontSize(14);doc.setFont(undefined,"normal");
-  doc.text("Obiettivi di Valore Pubblico",W/2,108,{align:"center"});
-  doc.text("Indicatori di Outcome",W/2,116,{align:"center"});
-  doc.setFontSize(12);doc.setTextColor(100);
-  doc.text("Regione Molise",W/2,130,{align:"center"});
+  doc.text("Obiettivi di Valore Pubblico (OVP)",W/2,110,{align:"center"});
+  doc.setFontSize(16);doc.setTextColor(80);doc.setFont(undefined,"bold");
+  doc.text("Regione Molise",W/2,128,{align:"center"});
   // ═══ TOC PAGE ═══
   doc.addPage("a4","landscape");firstPage=false;addHeader();
   var tocPageNum=doc.getNumberOfPages();
@@ -1592,18 +1591,14 @@ window._exportOVPpiao=function(){
     doc.setTextColor(0);doc.setFontSize(8);doc.setFont(undefined,"normal");
     var descLines=doc.splitTextToSize(ovp.descrizione||ovp.nome||"",W-24);
     doc.text(descLines,mx+2,pageY+3);pageY+=descLines.length*3.5+4;
-    // Stats box with Missioni - auto height with wrapping
-    var misText="Missioni di riferimento: "+(misKeys.length?misKeys.join(", "):"\u2014");
-    var misLines=doc.splitTextToSize(misText,(W-20)/2-8);
-    var boxH=Math.max(16,8+misLines.length*3.5);
-    doc.setFillColor(248,245,245);doc.rect(mx,pageY,W-20,boxH,"F");
-    doc.setDrawColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,boxH,"S");
+    // Stats box - compact
+    doc.setFillColor(248,245,245);doc.rect(mx,pageY,W-20,12,"F");
+    doc.setDrawColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,12,"S");
     doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(60);
     doc.text("Obiettivi Strategici collegati: "+linkedStrs.length,mx+4,pageY+5);
-    doc.text("Obiettivi Operativi che concorrono: "+linkedOprs.length,mx+4,pageY+11);
-    doc.text("Indicatori di misurazione: "+ovp.indicatori.length,mx+140,pageY+5);
-    doc.text(misLines,mx+140,pageY+11);
-    pageY+=boxH+4;
+    doc.text("Obiettivi Operativi che concorrono: "+linkedOprs.length,mx+4,pageY+10);
+    doc.text("Numero indicatori di misurazione: "+ovp.indicatori.length,mx+140,pageY+5);
+    pageY+=16;
     // ═══ 1.chNum.2 Indicatori ═══
     if(ovp.indicatori.length){
       tocEntries.push({level:2,text:sn(1,chNum,2)+" Indicatori",page:doc.getNumberOfPages()});
@@ -1676,14 +1671,12 @@ window._exportOVPpiao=function(){
     checkPage(25);
     tocEntries.push({level:2,text:sn(1,chNum,3)+" Sezione riepilogativa",page:doc.getNumberOfPages()});
     doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont(undefined,"bold");
-    doc.text(sn(1,chNum,3)+" Sezione riepilogativa caratteristiche OVP",mx,pageY+4);pageY+=6;
-    doc.setFontSize(7);doc.setFont(undefined,"italic");doc.setTextColor(100);
-    doc.text("Sintesi delle caratteristiche degli obiettivi strategici e operativi che concorrono alla realizzazione dell'OVP.",mx+2,pageY+3);pageY+=7;
+    doc.text(sn(1,chNum,3)+" Sezione riepilogativa caratteristiche OVP",mx,pageY+4);pageY+=8;
     doc.setTextColor(0);
-    // ── 3.1 Missioni e Programmi ──
+    // ── 3.1 Missioni, Programmi e strutture amministrative ──
     checkPage(20);
     doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
-    doc.text(sn(1,chNum,3,1)+" Missioni e Programmi",mx,pageY+4);pageY+=6;
+    doc.text(sn(1,chNum,3,1)+" Missioni, Programmi e strutture amministrative di riferimento",mx,pageY+4);pageY+=6;
     var misProg={};
     linkedStrs.forEach(function(s){
       var mk=s.data.missione||"";if(!mk)return;
@@ -1702,94 +1695,107 @@ window._exportOVPpiao=function(){
       var mpBody=[];
       mpKeys.forEach(function(mk){
         var md=misProg[mk];
-        mpBody.push([{content:mk+" (frequenza: "+md.count+")",colSpan:2,styles:{fontStyle:"bold",fillColor:[230,240,250],fontSize:7}}]);
+        mpBody.push([{content:mk+" (n. Obiettivi Strategici: "+md.count+")",colSpan:2,styles:{fontStyle:"bold",fillColor:[230,240,250],fontSize:7}}]);
         Object.keys(md.progs).sort().forEach(function(pk){
           var pd=md.progs[pk];
-          mpBody.push([{content:"    "+pk+" (frequenza: "+pd.count+")",colSpan:2,styles:{fontSize:6.5,fillColor:[245,248,255]}}]);
+          mpBody.push([{content:"    "+pk+" (n. Obiettivi Strategici: "+pd.count+")",colSpan:2,styles:{fontSize:6.5,fillColor:[245,248,255]}}]);
           pd.strs.forEach(function(s){
-            mpBody.push([{content:"        \u2022 "+s.serviceCode+" - "+(s.serviceName||"")+" — "+(s.data.codice||"")+" "+(s.data.nome||""),colSpan:2,styles:{fontSize:6,textColor:[100,100,100]}}]);
+            mpBody.push([{content:"        \u2022 "+s.serviceCode+" - "+(s.serviceName||"")+" \u2014 "+(s.data.codice||"")+" "+(s.data.nome||""),colSpan:2,styles:{fontSize:6,textColor:[100,100,100]}}]);
           });
         });
       });
       doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:mpBody,theme:"plain",styles:{fontSize:7,cellPadding:1.5,lineColor:[220,220,220],lineWidth:0.1}});
       pageY=doc.lastAutoTable.finalY+4;
     }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("Nessuna missione/programma associato.",mx+4,pageY+3);pageY+=6;}
-    // ── 3.2 Dimensioni di Impatto ──
+    // ── 3.2 Dimensioni di primo livello ──
     checkPage(15);
     doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
-    doc.text(sn(1,chNum,3,2)+" Dimensioni di Impatto",mx,pageY+4);pageY+=6;
-    var impFreq=freq(linkedStrs.flatMap(function(s){return s.data.impatto||[]}));
-    if(impFreq.length){
-      doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Dimensione","Frequenza"]],body:impFreq.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+    doc.text(sn(1,chNum,3,2)+" Dimensioni di primo livello",mx,pageY+4);pageY+=6;
+    var allImp=linkedStrs.flatMap(function(s){return s.data.impatto||[]});
+    var primoLiv=["AMBIENTALE","CULTURALE","DIGITALE","ECONOMICO","INFRASTRUTTURALE","SANITARIO","SCIENTIFICO","SOCIALE"];
+    var primoFreq=[];primoLiv.forEach(function(pl){var c=allImp.filter(function(v){return v===pl||v.indexOf(pl+" ")===0}).length;if(c>0)primoFreq.push([pl,c+""])});
+    if(primoFreq.length){
+      doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Dimensione","N. Obiettivi"]],body:primoFreq,theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       pageY=doc.lastAutoTable.finalY+4;
     }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);pageY+=6;}
-    // ── 3.3 Livello territoriale ──
+    // ── 3.3 Dimensioni di secondo livello ──
     checkPage(15);
     doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
-    doc.text(sn(1,chNum,3,3)+" Livello territoriale",mx,pageY+4);pageY+=6;
-    var lvFreq=freq(linkedStrs.map(function(s){return s.data.livTerr||""}));
-    if(lvFreq.length){
-      doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Livello","Frequenza"]],body:lvFreq.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+    doc.text(sn(1,chNum,3,3)+" Dimensioni di secondo livello",mx,pageY+4);pageY+=6;
+    var secLivFreq=freq(allImp.filter(function(v){return v&&v.indexOf(" ")>0}));
+    if(secLivFreq.length){
+      doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Dimensione","N. Obiettivi"]],body:secLivFreq.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       pageY=doc.lastAutoTable.finalY+4;
     }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);pageY+=6;}
     // ── 3.4 BES ──
     checkPage(15);
     doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
-    doc.text(sn(1,chNum,3,4)+" BES",mx,pageY+4);pageY+=6;
-    var besBody=[];
-    freq(linkedStrs.flatMap(function(s){return s.data.besTipo||[]})).forEach(function(f){if(f.label)besBody.push(["Tipo BES",f.label,f.count+""])});
-    freq(linkedStrs.flatMap(function(s){return s.data.besDomini||[]})).forEach(function(f){if(f.label)besBody.push(["Dominio BES",f.label,f.count+""])});
-    if(besBody.length){
-      doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Categoria","Valore","Frequenza"]],body:besBody,theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+    doc.text(sn(1,chNum,3,4)+" Benessere Equo e Sostenibile (BES)",mx,pageY+4);pageY+=6;
+    // 3.4a Tipo BES
+    doc.setFontSize(7.5);doc.setFont(undefined,"bold");doc.setTextColor(60);
+    doc.text(sn(1,chNum,3)+"."+"4a Tipo BES",mx+4,pageY+3);pageY+=5;
+    var besT=freq(linkedStrs.flatMap(function(s){return s.data.besTipo||[]}));
+    if(besT.length){
+      doc.autoTable({startY:pageY,margin:{left:mx+4,right:10},head:[["Tipo BES","N. Obiettivi"]],body:besT.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[80,80,120],textColor:255}});
+      pageY=doc.lastAutoTable.finalY+3;
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+8,pageY+3);pageY+=5;}
+    // 3.4b Domini BES
+    doc.setFontSize(7.5);doc.setFont(undefined,"bold");doc.setTextColor(60);
+    doc.text(sn(1,chNum,3)+"."+"4b Domini BES",mx+4,pageY+3);pageY+=5;
+    var besD=freq(linkedStrs.flatMap(function(s){return s.data.besDomini||[]}));
+    if(besD.length){
+      doc.autoTable({startY:pageY,margin:{left:mx+4,right:10},head:[["Dominio BES","N. Obiettivi"]],body:besD.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[80,80,120],textColor:255}});
+      pageY=doc.lastAutoTable.finalY+4;
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+8,pageY+3);pageY+=5;}
+    // ── OPR sections: Efficienza, Efficacia, Salute, Rischio ──
+    var allNat=linkedOprs.flatMap(function(o){var n=o.data.natura;return Array.isArray(n)?n:n?[n]:[]});
+    var macroMap={"EFFICIENZA":{subs:{}},"EFFICACIA":{subs:{}},"SALUTE DELLE RISORSE":{subs:{}}};
+    allNat.forEach(function(v){
+      if(!v)return;var parts=v.split(" - ");
+      var macro=(parts[0]||"").trim().toUpperCase();var sub=(parts[1]||v).trim();
+      if(macro.indexOf("EFFICACIA")>=0)macro="EFFICACIA";
+      else if(macro.indexOf("EFFICIENZA")>=0)macro="EFFICIENZA";
+      else if(macro.indexOf("SALUTE")>=0)macro="SALUTE DELLE RISORSE";
+      if(!macroMap[macro])macroMap[macro]={subs:{}};
+      macroMap[macro].subs[sub]=(macroMap[macro].subs[sub]||0)+1;
+    });
+    // 3.5 Efficienza
+    checkPage(15);
+    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.text(sn(1,chNum,3,5)+" Dimensione di Efficienza",mx,pageY+4);pageY+=6;
+    var effnSubs=macroMap["EFFICIENZA"].subs;var effnKeys=Object.keys(effnSubs).sort();
+    if(effnKeys.length){
+      doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Sotto-dimensione","N. Obiettivi"]],body:effnKeys.map(function(k){return[k,effnSubs[k]+""]}),theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       pageY=doc.lastAutoTable.finalY+4;
     }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);pageY+=6;}
-    // ── Dagli Obiettivi Operativi collegati ──
+    // 3.6 Efficacia
+    checkPage(15);
+    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.text(sn(1,chNum,3,6)+" Dimensione di Efficacia",mx,pageY+4);pageY+=6;
+    var effcSubs=macroMap["EFFICACIA"].subs;var effcKeys=Object.keys(effcSubs).sort();
+    if(effcKeys.length){
+      doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Sotto-dimensione","N. Obiettivi"]],body:effcKeys.map(function(k){return[k,effcSubs[k]+""]}),theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+      pageY=doc.lastAutoTable.finalY+4;
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);pageY+=6;}
+    // 3.7 Salute delle Risorse
+    checkPage(15);
+    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.text(sn(1,chNum,3,7)+" Dimensione della Salute delle Risorse",mx,pageY+4);pageY+=6;
+    var salSubs=macroMap["SALUTE DELLE RISORSE"].subs;var salKeys=Object.keys(salSubs).sort();
+    if(salKeys.length){
+      doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Sotto-dimensione","N. Obiettivi"]],body:salKeys.map(function(k){return[k,salSubs[k]+""]}),theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+      pageY=doc.lastAutoTable.finalY+4;
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);pageY+=6;}
+    // 3.8 Rischio corruzione
+    checkPage(15);
+    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.text(sn(1,chNum,3,8)+" Rischio corruzione",mx,pageY+4);pageY+=6;
     if(linkedOprs.length){
-      checkPage(20);
-      doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
-      doc.text("Dagli Obiettivi Operativi collegati ("+linkedOprs.length+")",mx,pageY+4);pageY+=6;
-      // Collect all natura values - parse "MACRO - sub" format
-      var allNat=linkedOprs.flatMap(function(o){var n=o.data.natura;return Array.isArray(n)?n:n?[n]:[]});
-      var natBody=[];
-      // Header row
-      natBody.push([
-        {content:"Categoria",styles:{fontStyle:"bold",fillColor:[0,51,102],textColor:255}},
-        {content:"Valore",styles:{fontStyle:"bold",fillColor:[0,51,102],textColor:255}},
-        {content:"Frequenza",styles:{fontStyle:"bold",fillColor:[0,51,102],textColor:255}}
-      ]);
-      // Parse and group by macro then sub
-      var macroMap={"EFFICACIA":{subs:{},order:1},"EFFICIENZA":{subs:{},order:2},"SALUTE DELLE RISORSE":{subs:{},order:3}};
-      allNat.forEach(function(v){
-        if(!v)return;
-        var parts=v.split(" - ");
-        var macro=(parts[0]||"").trim().toUpperCase();
-        var sub=(parts[1]||v).trim();
-        // Normalize macro
-        if(macro.indexOf("EFFICACIA")>=0)macro="EFFICACIA";
-        else if(macro.indexOf("EFFICIENZA")>=0)macro="EFFICIENZA";
-        else if(macro.indexOf("SALUTE")>=0)macro="SALUTE DELLE RISORSE";
-        if(!macroMap[macro])macroMap[macro]={subs:{},order:4};
-        macroMap[macro].subs[sub]=(macroMap[macro].subs[sub]||0)+1;
-      });
-      var sortedMacros=Object.keys(macroMap).sort(function(a,b){return(macroMap[a].order||99)-(macroMap[b].order||99)});
-      sortedMacros.forEach(function(macro){
-        var ss=macroMap[macro].subs;
-        var subKeys=Object.keys(ss).sort();
-        if(!subKeys.length)return;
-        var macroTotal=0;subKeys.forEach(function(k){macroTotal+=ss[k]});
-        natBody.push([{content:macro,colSpan:2,styles:{fontStyle:"bold",fillColor:[230,240,250],fontSize:7}},{content:macroTotal+"",styles:{fontStyle:"bold",fillColor:[230,240,250],halign:"center"}}]);
-        subKeys.forEach(function(sub){
-          natBody.push(["",{content:"\u2022 "+sub,styles:{fontSize:6.5}},{content:ss[sub]+"",styles:{halign:"center"}}]);
-        });
-      });
-      // Risk levels
-      var riskFreq=freq(linkedOprs.map(function(o){return o.data.rischioLivello||""}));
-      riskFreq.forEach(function(f){if(f.label)natBody.push(["Rischio",f.label,f.count+""])});
-      if(natBody.length>1){
-        doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:natBody,theme:"grid",styles:{fontSize:6.5,cellPadding:1.5,lineColor:[180,180,180],lineWidth:0.2},columnStyles:{0:{cellWidth:50},1:{cellWidth:170},2:{cellWidth:35,halign:"center"}}});
-        pageY=doc.lastAutoTable.finalY+4;
-      }
-    }
+      var riskFreq=freq(linkedOprs.map(function(o){return o.data.rischio==="si"?"Si ("+(o.data.rischioLivello||"n.d.")+")":o.data.rischio==="no"?"No":"Non indicato"}));
+      doc.autoTable({startY:pageY,margin:{left:mx,right:10},head:[["Rischio","N. Obiettivi"]],body:riskFreq.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:7,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
+      pageY=doc.lastAutoTable.finalY+4;
+    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);pageY+=6;}
+
     // ═══ 1.chNum.4 Elenco Obiettivi Strategici ═══
     checkPage(20);
     tocEntries.push({level:2,text:sn(1,chNum,4)+" Elenco Obiettivi Strategici",page:doc.getNumberOfPages()});
@@ -1800,7 +1806,7 @@ window._exportOVPpiao=function(){
       strBody.push([
         {content:"Codice",styles:{fontStyle:"bold",fillColor:RC,textColor:255}},
         {content:"Servizio",styles:{fontStyle:"bold",fillColor:RC,textColor:255}},
-        {content:"Nome Obiettivo",styles:{fontStyle:"bold",fillColor:RC,textColor:255}},
+        {content:"Obiettivo Strategico",styles:{fontStyle:"bold",fillColor:RC,textColor:255}},
         {content:"Missione",styles:{fontStyle:"bold",fillColor:RC,textColor:255}},
         {content:"Programma",styles:{fontStyle:"bold",fillColor:RC,textColor:255}}
       ]);
@@ -2538,7 +2544,7 @@ function Dash(p){
               return h("div",{key:area.code,style:{marginBottom:4}},
                 h("div",{style:{fontWeight:700,fontSize:10,color:"#003366"}},area.code+" - "+area.name),
                 missingSvcs.map(function(sv){
-                  return h("div",{key:sv.code,style:{paddingLeft:10,color:"#d9364f"}},sv.code+" - "+sv.name.substring(0,60))
+                  return h("div",{key:sv.code,style:{paddingLeft:10,color:"#d9364f"}},sv.code+" - "+(sv.name||"").substring(0,60))
                 })
               )
             })
@@ -2607,7 +2613,7 @@ function Dash(p){
           var noOvp=strs.filter(function(x){return!x.data.ovpRef}).length;
           var ovps2=window._loadOVP()||[];
           return h("div",null,
-            ovps2.map(function(o){return bar(o.cod+" - "+o.nome.substring(0,30),ovpCount[o.id]||0,nS,"#8e44ad")}),
+            ovps2.map(function(o){return bar(o.cod+" - "+(o.nome||"").substring(0,30),ovpCount[o.id]||0,nS,"#8e44ad")}),
             bar("Non collegati",noOvp,nS,"#d9dadb")
           );
         })():h("div",{style:{color:"#999",fontSize:11}},"--"),
@@ -2696,7 +2702,7 @@ function Dash(p){
     // ── SPACCATO PER AREA ──
     (function(){
       var areaData={};s.forEach(function(e){
-        if(!areaData[e.areaCode])areaData[e.areaCode]={name:e.areaName,strs:[],oprs:[],all:[]};
+        if(!areaData[e.areaCode])areaData[e.areaCode]={name:e.areaName||e.areaCode||"",strs:[],oprs:[],all:[]};
         areaData[e.areaCode].all.push(e);
         if(e.type==="strategic")areaData[e.areaCode].strs.push(e);else areaData[e.areaCode].oprs.push(e);
       });
@@ -2761,7 +2767,7 @@ function Dash(p){
     // ── SPACCATO PER SERVIZIO ──
     (function(){
       var svcData={};s.forEach(function(e){
-        if(!svcData[e.serviceCode])svcData[e.serviceCode]={name:e.serviceName,area:e.areaCode,strs:[],oprs:[]};
+        if(!svcData[e.serviceCode])svcData[e.serviceCode]={name:e.serviceName||e.serviceCode||"",area:e.areaCode||"",strs:[],oprs:[]};
         if(e.type==="strategic")svcData[e.serviceCode].strs.push(e);else svcData[e.serviceCode].oprs.push(e);
       });
       var sKeys=Object.keys(svcData).sort();
@@ -2780,7 +2786,7 @@ function Dash(p){
             var rSi=sv.oprs.filter(function(e){return e.data.rischio==="si"}).length;
             var imps={};sv.strs.forEach(function(e){(e.data.impatto||[]).forEach(function(i){imps[i]=1})});
             return h("tr",{key:sk,style:{background:ri%2?"#f8f9fa":"#fff"}},
-              h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #e8ecf1",fontWeight:600}},sk+" - "+sv.name.substring(0,30)),
+              h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #e8ecf1",fontWeight:600}},sk+" - "+(sv.name||"").substring(0,30)),
               h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #e8ecf1"}},sv.area),
               h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #e8ecf1",textAlign:"center"}},sv.strs.length),
               h("td",{style:{padding:"3px 6px",borderBottom:"1px solid #e8ecf1",textAlign:"center"}},sv.oprs.length),
@@ -2798,8 +2804,8 @@ function Dash(p){
     // ── DETTAGLIO INDICATORI PER AREA CON SERVIZI ANNIDATI ──
     (function(){
       var areaData={};s.forEach(function(e){
-        if(!areaData[e.areaCode])areaData[e.areaCode]={name:e.areaName,svcs:{}};
-        if(!areaData[e.areaCode].svcs[e.serviceCode])areaData[e.areaCode].svcs[e.serviceCode]={name:e.serviceName,entries:[]};
+        if(!areaData[e.areaCode])areaData[e.areaCode]={name:e.areaName||e.areaCode||"",svcs:{}};
+        if(!areaData[e.areaCode].svcs[e.serviceCode])areaData[e.areaCode].svcs[e.serviceCode]={name:e.serviceName||e.serviceCode||"",entries:[]};
         areaData[e.areaCode].svcs[e.serviceCode].entries.push(e);
       });
       var aKeys=Object.keys(areaData).sort();
@@ -2959,7 +2965,7 @@ function Dash(p){
               var pct=nS>0?Math.round(linked/nS*100):0;
               return h("div",{key:ovp.id,className:"kc",style:{borderLeft:"3px solid #8e44ad",textAlign:"left",padding:10}},
                 h("div",{style:{fontWeight:700,color:"#8e44ad",fontSize:11}},ovp.cod),
-                h("div",{style:{fontSize:9,color:"#5c6f82",marginBottom:4}},ovp.nome.substring(0,40)),
+                h("div",{style:{fontSize:9,color:"#5c6f82",marginBottom:4}},(ovp.nome||"").substring(0,40)),
                 h("div",{style:{fontSize:18,fontWeight:700,color:linked>0?"#008758":"#d9364f"}},linked),
                 h("div",{style:{fontSize:9,color:"#5c6f82"}},"STR collegati ("+pct+"% copertura)")
               )
@@ -3859,6 +3865,7 @@ function App(){
           h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
             h("div",{style:{fontWeight:700,fontSize:14,color:"#8e44ad"}},"Obiettivi di Valore Pubblico 2026-2028"),
             h("div",{style:{display:"flex",gap:6}},
+              h("button",{onClick:function(){saveOvps(ovps);flash("OVP salvati e sincronizzati nel cloud!","ok")},style:{padding:"6px 14px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:700,fontSize:11,cursor:"pointer",boxShadow:"0 2px 6px rgba(217,54,79,.3)"}},"Salva e Sincronizza OVP"),
               h("button",{onClick:function(){window._exportOVPexcel()},style:{padding:"6px 12px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"Scarica Excel"),
               h("button",{onClick:function(){window._exportOVPpdf()},style:{padding:"6px 12px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"Scarica PDF"),
               h("button",{onClick:function(){window._exportOVPpiao()},style:{padding:"6px 12px",background:"#c80000",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"PDF PIAO"),
@@ -3945,7 +3952,7 @@ function App(){
                       var mis=s.data.missione?("M"+s.data.missione):"";
                       var pro=s.data.programma?(" P"+s.data.programma):"";
                       var mp=mis||pro?" ["+mis+pro+"]":"";
-                      var desc=s.data.descrizione?(s.data.descrizione).substring(0,60):"";
+                      var desc=s.data.descrizione?((s.data.descrizione)||"").substring(0,60):"";
                       return h("option",{key:s.id,value:s.id},cur+s.data.codice+" — "+s.serviceName+mp+" — "+(s.data.nome||"")+(desc?" — "+desc:""))
                     })
                   ),
@@ -3972,7 +3979,7 @@ function App(){
               return h("div",{key:ovp.id,style:{marginBottom:16}},
                 // OVP node
                 h("div",{style:{padding:"8px 14px",background:"#8e44ad",color:"#fff",borderRadius:4,fontWeight:700,fontSize:12,marginBottom:2}},
-                  ovp.cod+" - "+ovp.nome.substring(0,70)
+                  ovp.cod+" - "+(ovp.nome||"").substring(0,70)
                 ),
                 // STR branches
                 linkedStrs.map(function(str){
@@ -4055,7 +4062,7 @@ function App(){
                   var existStrs=subs.filter(function(s){return s.type==="strategic"&&s.serviceCode===adminSvc.code});
                   if(!existStrs.length){alert("Prima inserisci almeno un obiettivo strategico per questo servizio");return}
                   var msg="Seleziona l'ob. strategico di riferimento:\n\n";
-                  existStrs.forEach(function(s,i){msg+=(i+1)+") "+s.data.codice+" - "+s.data.nome.substring(0,60)+"\n"});
+                  existStrs.forEach(function(s,i){msg+=(i+1)+") "+s.data.codice+" - "+(s.data.nome||"").substring(0,60)+"\n"});
                   var choice=prompt(msg+"\nInserisci il numero:");
                   if(!choice)return;
                   var idx=parseInt(choice)-1;

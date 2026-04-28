@@ -366,6 +366,40 @@ window._load = function(){
           }
           window.dispatchEvent(new Event("subsChanged"));
           console.log("Cloud load: "+merged.length+" (cloud:"+cloudData.length+", local:"+local.length+", deleted:"+Object.keys(window._deletedIds).length+")");
+          // ── Initial OVP pull from cloud (one-time) ──
+          var ovpEntries=cloudData.filter(function(e){return e&&e.id&&e.id.indexOf("OVP_")===0});
+          if(ovpEntries.length>0){
+            var localOvps=window._loadOVP()||[];
+            var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
+            var ovpChanged=false;
+            ovpEntries.forEach(function(e){
+              var ovpData=e.data||e;
+              if(!ovpData||!ovpData.id)return;
+              if(!ovpById[ovpData.id]){ovpById[ovpData.id]=ovpData;ovpChanged=true}
+              else{
+                var ct=e.timestamp||"";var lt=ovpById[ovpData.id]._ts||"";
+                if(ct>lt){
+                  // Merge: keep local tabData if cloud is shorter (truncated)
+                  var lc=ovpById[ovpData.id];var mc=JSON.parse(JSON.stringify(ovpData));mc._ts=ct;
+                  if(lc.indicatori&&mc.indicatori){
+                    mc.indicatori=mc.indicatori.map(function(ci,idx){
+                      var li=lc.indicatori[idx];if(!li)return ci;
+                      if(li.tabData&&(!ci.tabData||li.tabData.length>ci.tabData.length))ci.tabData=li.tabData;
+                      if(li.descrCommento&&(!ci.descrCommento||li.descrCommento.length>ci.descrCommento.length))ci.descrCommento=li.descrCommento;
+                      return ci;
+                    });
+                  }
+                  ovpById[ovpData.id]=mc;ovpChanged=true;
+                }
+              }
+            });
+            if(ovpChanged){
+              var mergedOvps=Object.keys(ovpById).map(function(k){return ovpById[k]});
+              try{localStorage.setItem("ppo_ovp",JSON.stringify(mergedOvps))}catch(e){}
+              window.dispatchEvent(new Event("ovpChanged"));
+              console.log("[OVP] Caricati "+mergedOvps.length+" OVP dal cloud (startup)");
+            }
+          }
         }else if(local.length>0){
           var filtered=window._filterDeleted(local);
           window._SUBS=filtered;
@@ -440,30 +474,7 @@ window._startAutoSync=function(){
         if(!cloud||!Array.isArray(cloud))return;
         // PULL: add cloud entries we don't have locally (skip deleted)
         var localIds={};window._SUBS.forEach(function(e){if(e&&e.id)localIds[e.id]=true});
-        // ── OVP cloud sync ──
-        var ovpEntries=cloud.filter(function(e){return e&&e.id&&e.id.indexOf("OVP_")===0});
-        if(ovpEntries.length>0){
-          var localOvps=window._loadOVP()||[];
-          var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
-          var ovpChanged=false;
-          ovpEntries.forEach(function(e){
-            var ovpData=e.data||e;
-            if(ovpData&&ovpData.id){
-              if(!ovpById[ovpData.id]){ovpById[ovpData.id]=ovpData;ovpChanged=true}
-              else{
-                var ct=ovpById[ovpData.id]._ts||"";
-                var et=e.timestamp||"";
-                if(et>ct){ovpById[ovpData.id]=ovpData;ovpById[ovpData.id]._ts=et;ovpChanged=true}
-              }
-            }
-          });
-          if(ovpChanged){
-            var mergedOvps=Object.keys(ovpById).map(function(k){return ovpById[k]});
-            try{localStorage.setItem("ppo_ovp",JSON.stringify(mergedOvps))}catch(e){}
-            window.dispatchEvent(new Event("ovpChanged"));
-            console.log("[AUTO-SYNC] OVP: merged "+mergedOvps.length+" from cloud");
-          }
-        }
+        // ── OVP: NOT auto-synced — use explicit "Salva e Sincronizza" button ──
         // Filter out OVP entries from regular sync
         cloud=cloud.filter(function(e){return!e||!e.id||e.id.indexOf("OVP_")!==0});
         var cloudOnly=cloud.filter(function(e){return e&&e.id&&!localIds[e.id]&&!window._isDeleted(e.id)});
@@ -737,29 +748,96 @@ window._OVP_DEFAULT = [
 ];
 window._loadOVP = function(){try{return JSON.parse(localStorage.getItem("ppo_ovp")||"null")||window._OVP_DEFAULT.map(function(o){return JSON.parse(JSON.stringify(o))})}catch(e){return window._OVP_DEFAULT.map(function(o){return JSON.parse(JSON.stringify(o))})}};
 window._saveOVP = function(ovps){
+  // LOCAL ONLY — no cloud push. Use _syncOVPtoCloud for explicit cloud save.
   try{localStorage.setItem("ppo_ovp",JSON.stringify(ovps))}catch(e){}
-  // Cloud sync: save each OVP as individual cloud entry
-  if(window.API_URL){
-    ovps.forEach(function(ovp){
-      var entry={id:"OVP_"+ovp.id,type:"ovp_config",timestamp:new Date().toISOString(),data:ovp};
-      var b64=window._b64(JSON.stringify(entry));
-      var testUrl=window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b64);
-      if(testUrl.length>7800){
-        // Truncate large tabData in indicators for cloud
-        var clone=JSON.parse(JSON.stringify(ovp));
-        clone.indicatori=(clone.indicatori||[]).map(function(ind){
+};
+// ═══ EXPLICIT cloud push — called ONLY by "Salva e Sincronizza" button ═══
+window._syncOVPtoCloud = function(ovps,callback){
+  if(!window.API_URL){if(callback)callback(false);return}
+  var done=0;var total=ovps.length;var errors=0;
+  ovps.forEach(function(ovp){
+    var entry={id:"OVP_"+ovp.id,type:"ovp_config",timestamp:new Date().toISOString(),data:ovp};
+    var json=JSON.stringify(entry);
+    var b64=window._b64(json);
+    var testUrl=window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b64);
+    // If URL too long, split indicator data into separate chunks
+    if(testUrl.length>7800){
+      var clone=JSON.parse(JSON.stringify(ovp));
+      clone.indicatori=(clone.indicatori||[]).map(function(ind){
+        var ni=Object.assign({},ind);
+        // More generous limits than before
+        if(ni.tabData&&ni.tabData.length>1500)ni.tabData=ni.tabData.substring(0,1500);
+        if(ni.descrCommento&&ni.descrCommento.length>800)ni.descrCommento=ni.descrCommento.substring(0,800);
+        return ni;
+      });
+      entry.data=clone;
+      b64=window._b64(JSON.stringify(entry));
+      // If STILL too long after generous trim, trim harder
+      if((window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b64)).length>7800){
+        clone.indicatori=clone.indicatori.map(function(ind){
           var ni=Object.assign({},ind);
-          if(ni.tabData&&ni.tabData.length>400)ni.tabData=ni.tabData.substring(0,400);
+          if(ni.tabData&&ni.tabData.length>500)ni.tabData=ni.tabData.substring(0,500);
           if(ni.descrCommento&&ni.descrCommento.length>300)ni.descrCommento=ni.descrCommento.substring(0,300);
           return ni;
         });
         entry.data=clone;
         b64=window._b64(JSON.stringify(entry));
       }
-      window._saveQueue.push({params:{action:"upsert",id:entry.id,data:b64},id:entry.id,retries:0});
+    }
+    window._cloudGet({action:"upsert",id:entry.id,data:b64},function(r){
+      done++;
+      if(!r)errors++;
+      if(done===total&&callback)callback(errors===0);
     });
-    window._processQueue();
-  }
+  });
+};
+// ═══ EXPLICIT cloud pull — load OVP from cloud, merge (cloud wins) ═══
+window._pullOVPfromCloud = function(callback){
+  if(!window.API_URL){if(callback)callback();return}
+  window._cloudGet({action:"load"},function(cloudData){
+    if(!cloudData||!Array.isArray(cloudData)){if(callback)callback();return}
+    var ovpEntries=cloudData.filter(function(e){return e&&e.id&&e.id.indexOf("OVP_")===0});
+    if(!ovpEntries.length){if(callback)callback();return}
+    var localOvps=window._loadOVP()||[];
+    var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
+    var changed=false;
+    ovpEntries.forEach(function(e){
+      var ovpData=e.data||e;
+      if(!ovpData||!ovpData.id)return;
+      if(!ovpById[ovpData.id]){
+        // New OVP from cloud
+        ovpById[ovpData.id]=ovpData;changed=true;
+      }else{
+        // Cloud timestamp newer? Cloud wins.
+        var ct=e.timestamp||"";
+        var lt=ovpById[ovpData.id]._ts||"";
+        if(ct>lt){
+          // Merge: keep local tabData/descrCommento if cloud version is truncated
+          var local=ovpById[ovpData.id];
+          var merged=JSON.parse(JSON.stringify(ovpData));
+          merged._ts=ct;
+          if(local.indicatori&&merged.indicatori){
+            merged.indicatori=merged.indicatori.map(function(ci,idx){
+              var li=local.indicatori[idx];
+              if(!li)return ci;
+              // Keep local tabData if it's longer (cloud was truncated)
+              if(li.tabData&&(!ci.tabData||li.tabData.length>ci.tabData.length))ci.tabData=li.tabData;
+              if(li.descrCommento&&(!ci.descrCommento||li.descrCommento.length>ci.descrCommento.length))ci.descrCommento=li.descrCommento;
+              return ci;
+            });
+          }
+          ovpById[ovpData.id]=merged;changed=true;
+        }
+      }
+    });
+    if(changed){
+      var mergedOvps=Object.keys(ovpById).map(function(k){return ovpById[k]});
+      try{localStorage.setItem("ppo_ovp",JSON.stringify(mergedOvps))}catch(e){}
+      window.dispatchEvent(new Event("ovpChanged"));
+      console.log("[OVP] Caricati "+mergedOvps.length+" OVP dal cloud");
+    }
+    if(callback)callback();
+  });
 };
 // Delete OVP from cloud
 window._cloudDeleteOVP = function(ovpId){
@@ -3865,7 +3943,21 @@ function App(){
           h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
             h("div",{style:{fontWeight:700,fontSize:14,color:"#8e44ad"}},"Obiettivi di Valore Pubblico 2026-2028"),
             h("div",{style:{display:"flex",gap:6}},
-              h("button",{onClick:function(){saveOvps(ovps);flash("OVP salvati e sincronizzati nel cloud!","ok")},style:{padding:"6px 14px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:700,fontSize:11,cursor:"pointer",boxShadow:"0 2px 6px rgba(217,54,79,.3)"}},"Salva e Sincronizza OVP"),
+              h("button",{onClick:function(){
+                window._saveOVP(ovps);
+                flash("Sincronizzazione in corso...","ok");
+                window._syncOVPtoCloud(ovps,function(ok){
+                  if(ok)flash("OVP salvati e sincronizzati nel cloud!","ok");
+                  else flash("Alcuni OVP non sincronizzati (riprova)","err");
+                });
+              },style:{padding:"6px 14px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:700,fontSize:11,cursor:"pointer",boxShadow:"0 2px 6px rgba(217,54,79,.3)"}},"Salva e Sincronizza OVP"),
+              h("button",{onClick:function(){
+                flash("Caricamento OVP dal cloud...","ok");
+                window._pullOVPfromCloud(function(){
+                  setOvps(window._loadOVP()||[]);
+                  flash("OVP aggiornati dal cloud!","ok");
+                });
+              },style:{padding:"6px 12px",background:"#003366",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"Carica da Cloud"),
               h("button",{onClick:function(){window._exportOVPexcel()},style:{padding:"6px 12px",background:"#008758",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"Scarica Excel"),
               h("button",{onClick:function(){window._exportOVPpdf()},style:{padding:"6px 12px",background:"#0066cc",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"Scarica PDF"),
               h("button",{onClick:function(){window._exportOVPpiao()},style:{padding:"6px 12px",background:"#c80000",color:"#fff",border:"none",borderRadius:4,fontWeight:600,fontSize:10,cursor:"pointer"}},"PDF PIAO"),

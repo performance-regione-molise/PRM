@@ -775,27 +775,42 @@ window._syncOVPtoCloud = function(ovps,callback){
       var meta=JSON.parse(JSON.stringify(ovp));
       meta.indicatori=[];// indicators go separately
       meta._hasIndSplit=true;// flag for pull
-      if(meta.descrizione&&meta.descrizione.length>2000)meta.descrizione=meta.descrizione.substring(0,2000);
+      if(meta.descrizione&&meta.descrizione.length>1500)meta.descrizione=meta.descrizione.substring(0,1500);
       var metaEntry={id:"OVP_"+ovp.id,type:"ovp_config",timestamp:ts,data:meta};
-      jobs.push({id:metaEntry.id,b64:window._b64(JSON.stringify(metaEntry))});
-      // Each indicator as separate entry
+      var mb64=window._b64(JSON.stringify(metaEntry));
+      // Check meta also fits
+      var murl=window.API_URL+"?action=upsert&id="+metaEntry.id+"&data="+encodeURIComponent(mb64);
+      if(murl.length>7500&&meta.descrizione){
+        meta.descrizione=meta.descrizione.substring(0,800);
+        metaEntry.data=meta;
+        mb64=window._b64(JSON.stringify(metaEntry));
+      }
+      jobs.push({id:metaEntry.id,b64:mb64});
+      // Each indicator as separate entry — aggressively truncate to fit URL
       (ovp.indicatori||[]).forEach(function(ind,idx){
         var ci=JSON.parse(JSON.stringify(ind));
-        // Truncate large fields to fit per-indicator
-        if(ci.tabData&&ci.tabData.length>2000)ci.tabData=ci.tabData.substring(0,2000);
-        if(ci.descrCommento&&ci.descrCommento.length>800)ci.descrCommento=ci.descrCommento.substring(0,800);
-        if(ci.descrInd&&ci.descrInd.length>500)ci.descrInd=ci.descrInd.substring(0,500);
-        var indEntry={id:"OVP_"+ovp.id+"_IND"+idx,type:"ovp_indicator",timestamp:ts,parentId:ovp.id,idx:idx,data:ci};
-        var ib64=window._b64(JSON.stringify(indEntry));
-        var iurl=window.API_URL+"?action=upsert&id="+indEntry.id+"&data="+encodeURIComponent(ib64);
-        if(iurl.length>7500){
-          // Still too long — truncate harder
-          if(ci.tabData&&ci.tabData.length>500)ci.tabData=ci.tabData.substring(0,500);
-          if(ci.descrCommento&&ci.descrCommento.length>300)ci.descrCommento=ci.descrCommento.substring(0,300);
-          indEntry.data=ci;
+        // Progressive truncation: try generous first, then trim harder
+        var limits=[
+          {tab:1200,comm:500,desc:300,form:300,base:200},
+          {tab:600,comm:300,desc:200,form:200,base:150},
+          {tab:300,comm:150,desc:100,form:150,base:100},
+          {tab:0,comm:100,desc:80,form:100,base:80}
+        ];
+        var ib64,iurl;
+        for(var li=0;li<limits.length;li++){
+          var lim=limits[li];
+          var ti=JSON.parse(JSON.stringify(ind));
+          if(ti.tabData&&ti.tabData.length>lim.tab){ti.tabData=lim.tab>0?ti.tabData.substring(0,lim.tab):""}
+          if(ti.descrCommento&&ti.descrCommento.length>lim.comm)ti.descrCommento=ti.descrCommento.substring(0,lim.comm);
+          if(ti.descrInd&&ti.descrInd.length>lim.desc)ti.descrInd=ti.descrInd.substring(0,lim.desc);
+          if(ti.formula&&ti.formula.length>lim.form)ti.formula=ti.formula.substring(0,lim.form);
+          if(ti.baseline&&ti.baseline.length>lim.base)ti.baseline=ti.baseline.substring(0,lim.base);
+          var indEntry={id:"OVP_"+ovp.id+"_IND"+idx,type:"ovp_indicator",timestamp:ts,parentId:ovp.id,idx:idx,data:ti};
           ib64=window._b64(JSON.stringify(indEntry));
+          iurl=window.API_URL+"?action=upsert&id="+indEntry.id+"&data="+encodeURIComponent(ib64);
+          if(iurl.length<=7500)break;
         }
-        jobs.push({id:indEntry.id,b64:ib64});
+        jobs.push({id:"OVP_"+ovp.id+"_IND"+idx,b64:ib64});
       });
     }
   });

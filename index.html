@@ -366,31 +366,37 @@ window._load = function(){
           }
           window.dispatchEvent(new Event("subsChanged"));
           console.log("Cloud load: "+merged.length+" (cloud:"+cloudData.length+", local:"+local.length+", deleted:"+Object.keys(window._deletedIds).length+")");
-          // ── Initial OVP pull from cloud (one-time) ──
-          var ovpEntries=cloudData.filter(function(e){return e&&e.id&&e.id.indexOf("OVP_")===0});
-          if(ovpEntries.length>0){
+          // ── Initial OVP pull from cloud (one-time, split-aware) ──
+          var ovpMetas=cloudData.filter(function(e){return e&&e.id&&e.id.indexOf("OVP_")===0&&e.id.indexOf("_IND")<0&&e.type==="ovp_config"});
+          var ovpInds=cloudData.filter(function(e){return e&&e.id&&e.id.indexOf("_IND")>0&&e.type==="ovp_indicator"});
+          if(ovpMetas.length>0){
             var localOvps=window._loadOVP()||[];
             var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
             var ovpChanged=false;
-            ovpEntries.forEach(function(e){
-              var ovpData=e.data||e;
-              if(!ovpData||!ovpData.id)return;
-              if(!ovpById[ovpData.id]){ovpById[ovpData.id]=ovpData;ovpChanged=true}
-              else{
-                var ct=e.timestamp||"";var lt=ovpById[ovpData.id]._ts||"";
-                if(ct>lt){
-                  // Merge: keep local tabData if cloud is shorter (truncated)
-                  var lc=ovpById[ovpData.id];var mc=JSON.parse(JSON.stringify(ovpData));mc._ts=ct;
-                  if(lc.indicatori&&mc.indicatori){
-                    mc.indicatori=mc.indicatori.map(function(ci,idx){
-                      var li=lc.indicatori[idx];if(!li)return ci;
-                      if(li.tabData&&(!ci.tabData||li.tabData.length>ci.tabData.length))ci.tabData=li.tabData;
-                      if(li.descrCommento&&(!ci.descrCommento||li.descrCommento.length>ci.descrCommento.length))ci.descrCommento=li.descrCommento;
-                      return ci;
-                    });
-                  }
-                  ovpById[ovpData.id]=mc;ovpChanged=true;
+            ovpMetas.forEach(function(e){
+              var ovpData=e.data||e;if(!ovpData||!ovpData.id)return;
+              var ct=e.timestamp||"";var lt=(ovpById[ovpData.id]||{})._ts||"";
+              if(!ovpById[ovpData.id]||ct>lt){
+                var mc=JSON.parse(JSON.stringify(ovpData));mc._ts=ct;
+                if(mc._hasIndSplit||!mc.indicatori||!mc.indicatori.length){
+                  var myInds=ovpInds.filter(function(ie){return ie.parentId===ovpData.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
+                  if(myInds.length){mc.indicatori=myInds.map(function(ie){return ie.data})}
+                  else{var lc=ovpById[ovpData.id];if(lc&&lc.indicatori)mc.indicatori=lc.indicatori}
+                  var lc2=ovpById[ovpData.id];
+                  if(lc2&&lc2.descrizione&&(!mc.descrizione||lc2.descrizione.length>mc.descrizione.length))mc.descrizione=lc2.descrizione;
                 }
+                // Keep local long fields if cloud shorter
+                var lc3=ovpById[ovpData.id];
+                if(lc3&&lc3.indicatori&&mc.indicatori){
+                  mc.indicatori=mc.indicatori.map(function(ci,idx){
+                    var li=lc3.indicatori[idx];if(!li)return ci;
+                    if(li.tabData&&(!ci.tabData||li.tabData.length>ci.tabData.length))ci.tabData=li.tabData;
+                    if(li.descrCommento&&(!ci.descrCommento||li.descrCommento.length>ci.descrCommento.length))ci.descrCommento=li.descrCommento;
+                    return ci;
+                  });
+                }
+                delete mc._hasIndSplit;
+                ovpById[ovpData.id]=mc;ovpChanged=true;
               }
             });
             if(ovpChanged){
@@ -754,40 +760,56 @@ window._saveOVP = function(ovps){
 // ═══ EXPLICIT cloud push — called ONLY by "Salva e Sincronizza" button ═══
 window._syncOVPtoCloud = function(ovps,callback){
   if(!window.API_URL){if(callback)callback(false);return}
-  var done=0;var total=ovps.length;var errors=0;
+  var ts=new Date().toISOString();
+  var jobs=[];// array of {id, b64} to upsert
   ovps.forEach(function(ovp){
-    var entry={id:"OVP_"+ovp.id,type:"ovp_config",timestamp:new Date().toISOString(),data:ovp};
-    var json=JSON.stringify(entry);
-    var b64=window._b64(json);
-    var testUrl=window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b64);
-    // If URL too long, split indicator data into separate chunks
-    if(testUrl.length>7800){
-      var clone=JSON.parse(JSON.stringify(ovp));
-      clone.indicatori=(clone.indicatori||[]).map(function(ind){
-        var ni=Object.assign({},ind);
-        // More generous limits than before
-        if(ni.tabData&&ni.tabData.length>1500)ni.tabData=ni.tabData.substring(0,1500);
-        if(ni.descrCommento&&ni.descrCommento.length>800)ni.descrCommento=ni.descrCommento.substring(0,800);
-        return ni;
+    // Strategy: save meta + indicators separately if needed
+    var fullEntry={id:"OVP_"+ovp.id,type:"ovp_config",timestamp:ts,data:ovp};
+    var b64=window._b64(JSON.stringify(fullEntry));
+    var url=window.API_URL+"?action=upsert&id="+fullEntry.id+"&data="+encodeURIComponent(b64);
+    if(url.length<=7500){
+      // Fits in one call — great!
+      jobs.push({id:fullEntry.id,b64:b64});
+    }else{
+      // Split: meta entry (no indicators, truncated descrizione)
+      var meta=JSON.parse(JSON.stringify(ovp));
+      meta.indicatori=[];// indicators go separately
+      meta._hasIndSplit=true;// flag for pull
+      if(meta.descrizione&&meta.descrizione.length>2000)meta.descrizione=meta.descrizione.substring(0,2000);
+      var metaEntry={id:"OVP_"+ovp.id,type:"ovp_config",timestamp:ts,data:meta};
+      jobs.push({id:metaEntry.id,b64:window._b64(JSON.stringify(metaEntry))});
+      // Each indicator as separate entry
+      (ovp.indicatori||[]).forEach(function(ind,idx){
+        var ci=JSON.parse(JSON.stringify(ind));
+        // Truncate large fields to fit per-indicator
+        if(ci.tabData&&ci.tabData.length>2000)ci.tabData=ci.tabData.substring(0,2000);
+        if(ci.descrCommento&&ci.descrCommento.length>800)ci.descrCommento=ci.descrCommento.substring(0,800);
+        if(ci.descrInd&&ci.descrInd.length>500)ci.descrInd=ci.descrInd.substring(0,500);
+        var indEntry={id:"OVP_"+ovp.id+"_IND"+idx,type:"ovp_indicator",timestamp:ts,parentId:ovp.id,idx:idx,data:ci};
+        var ib64=window._b64(JSON.stringify(indEntry));
+        var iurl=window.API_URL+"?action=upsert&id="+indEntry.id+"&data="+encodeURIComponent(ib64);
+        if(iurl.length>7500){
+          // Still too long — truncate harder
+          if(ci.tabData&&ci.tabData.length>500)ci.tabData=ci.tabData.substring(0,500);
+          if(ci.descrCommento&&ci.descrCommento.length>300)ci.descrCommento=ci.descrCommento.substring(0,300);
+          indEntry.data=ci;
+          ib64=window._b64(JSON.stringify(indEntry));
+        }
+        jobs.push({id:indEntry.id,b64:ib64});
       });
-      entry.data=clone;
-      b64=window._b64(JSON.stringify(entry));
-      // If STILL too long after generous trim, trim harder
-      if((window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b64)).length>7800){
-        clone.indicatori=clone.indicatori.map(function(ind){
-          var ni=Object.assign({},ind);
-          if(ni.tabData&&ni.tabData.length>500)ni.tabData=ni.tabData.substring(0,500);
-          if(ni.descrCommento&&ni.descrCommento.length>300)ni.descrCommento=ni.descrCommento.substring(0,300);
-          return ni;
-        });
-        entry.data=clone;
-        b64=window._b64(JSON.stringify(entry));
-      }
     }
-    window._cloudGet({action:"upsert",id:entry.id,data:b64},function(r){
+  });
+  // Execute all jobs sequentially with queue
+  var done=0;var errors=0;var total=jobs.length;
+  if(!total){if(callback)callback(true);return}
+  jobs.forEach(function(job){
+    window._cloudGet({action:"upsert",id:job.id,data:job.b64},function(r){
       done++;
       if(!r)errors++;
-      if(done===total&&callback)callback(errors===0);
+      if(done===total){
+        console.log("[OVP SYNC] "+done+" entries, "+errors+" errors");
+        if(callback)callback(errors===0);
+      }
     });
   });
 };
@@ -796,38 +818,46 @@ window._pullOVPfromCloud = function(callback){
   if(!window.API_URL){if(callback)callback();return}
   window._cloudGet({action:"load"},function(cloudData){
     if(!cloudData||!Array.isArray(cloudData)){if(callback)callback();return}
-    var ovpEntries=cloudData.filter(function(e){return e&&e.id&&e.id.indexOf("OVP_")===0});
-    if(!ovpEntries.length){if(callback)callback();return}
+    // Separate meta entries and indicator entries
+    var metaEntries=cloudData.filter(function(e){return e&&e.id&&e.id.indexOf("OVP_")===0&&e.id.indexOf("_IND")<0&&e.type==="ovp_config"});
+    var indEntries=cloudData.filter(function(e){return e&&e.id&&e.id.indexOf("_IND")>0&&e.type==="ovp_indicator"});
+    if(!metaEntries.length){if(callback)callback();return}
     var localOvps=window._loadOVP()||[];
     var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
     var changed=false;
-    ovpEntries.forEach(function(e){
+    metaEntries.forEach(function(e){
       var ovpData=e.data||e;
       if(!ovpData||!ovpData.id)return;
-      if(!ovpById[ovpData.id]){
-        // New OVP from cloud
-        ovpById[ovpData.id]=ovpData;changed=true;
-      }else{
-        // Cloud timestamp newer? Cloud wins.
-        var ct=e.timestamp||"";
-        var lt=ovpById[ovpData.id]._ts||"";
-        if(ct>lt){
-          // Merge: keep local tabData/descrCommento if cloud version is truncated
-          var local=ovpById[ovpData.id];
-          var merged=JSON.parse(JSON.stringify(ovpData));
-          merged._ts=ct;
-          if(local.indicatori&&merged.indicatori){
-            merged.indicatori=merged.indicatori.map(function(ci,idx){
-              var li=local.indicatori[idx];
-              if(!li)return ci;
-              // Keep local tabData if it's longer (cloud was truncated)
-              if(li.tabData&&(!ci.tabData||li.tabData.length>ci.tabData.length))ci.tabData=li.tabData;
-              if(li.descrCommento&&(!ci.descrCommento||li.descrCommento.length>ci.descrCommento.length))ci.descrCommento=li.descrCommento;
-              return ci;
-            });
+      var ct=e.timestamp||"";var lt=(ovpById[ovpData.id]||{})._ts||"";
+      if(!ovpById[ovpData.id]||ct>lt){
+        var merged=JSON.parse(JSON.stringify(ovpData));
+        merged._ts=ct;
+        // If split entry, reassemble indicators from cloud
+        if(merged._hasIndSplit||!merged.indicatori||!merged.indicatori.length){
+          var myInds=indEntries.filter(function(ie){return ie.parentId===ovpData.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
+          if(myInds.length){
+            merged.indicatori=myInds.map(function(ie){return ie.data});
+            // Keep local data if longer (cloud truncated)
+            var local=ovpById[ovpData.id];
+            if(local&&local.indicatori){
+              merged.indicatori=merged.indicatori.map(function(ci,idx){
+                var li=local.indicatori[idx];if(!li)return ci;
+                if(li.tabData&&(!ci.tabData||li.tabData.length>ci.tabData.length))ci.tabData=li.tabData;
+                if(li.descrCommento&&(!ci.descrCommento||li.descrCommento.length>ci.descrCommento.length))ci.descrCommento=li.descrCommento;
+                if(li.descrInd&&(!ci.descrInd||li.descrInd.length>ci.descrInd.length))ci.descrInd=li.descrInd;
+                return ci;
+              });
+            }
+          }else{
+            var local2=ovpById[ovpData.id];
+            if(local2&&local2.indicatori)merged.indicatori=local2.indicatori;
           }
-          ovpById[ovpData.id]=merged;changed=true;
+          // Keep local descrizione if cloud was truncated
+          var local3=ovpById[ovpData.id];
+          if(local3&&local3.descrizione&&(!merged.descrizione||local3.descrizione.length>merged.descrizione.length))merged.descrizione=local3.descrizione;
         }
+        delete merged._hasIndSplit;
+        ovpById[ovpData.id]=merged;changed=true;
       }
     });
     if(changed){

@@ -1821,7 +1821,7 @@ window._exportOVPpiao=function(){
           // Chart image — ensure it fits on page
           if(chartImg){
             var cW=180;var cH=108;
-            checkPage(cH*0.38+10);// mm needed
+            checkPage(cH+8);
             var cx=(W-20-cW)/2+mx;
             try{doc.addImage(chartImg,"PNG",cx,pageY,cW,cH)}catch(e){}
             pageY+=cH+4;
@@ -1829,7 +1829,7 @@ window._exportOVPpiao=function(){
         }else if(chartImg){
           // Simple baseline/target chart
           var cW2=130;var cH2=91;
-          checkPage(cH2*0.38+10);
+          checkPage(cH2+8);
           var cx2=(W-20-cW2)/2+mx;
           try{doc.addImage(chartImg,"PNG",cx2,pageY,cW2,cH2)}catch(e){}
           pageY+=cH2+4;

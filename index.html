@@ -328,7 +328,8 @@ window._load = function(){
         window._syncing=false; window._lastSync=new Date();
         if(cloudData && Array.isArray(cloudData)){
           var byId={};
-          cloudData.forEach(function(e){if(e&&e.id)byId[e.id]=e});
+          // Filter out OVP entries — they go to _loadOVP, not _SUBS
+          cloudData.filter(function(e){return e&&e.id&&e.id.indexOf("OVP_")!==0}).forEach(function(e){if(e&&e.id)byId[e.id]=e});
           var localOnly=[];
           local.forEach(function(e){
             if(!e||!e.id)return;
@@ -366,47 +367,49 @@ window._load = function(){
           }
           window.dispatchEvent(new Event("subsChanged"));
           console.log("Cloud load: "+merged.length+" (cloud:"+cloudData.length+", local:"+local.length+", deleted:"+Object.keys(window._deletedIds).length+")");
-          // ── Initial OVP pull from cloud (one-time, chunk-aware) ──
-          var ovpMetas=cloudData.filter(function(e){return e&&e.type==="ovp_config"});
-          var ovpDescs=cloudData.filter(function(e){return e&&e.type==="ovp_desc"});
-          var ovpInds=cloudData.filter(function(e){return e&&(e.type==="ovp_ind"||e.type==="ovp_indicator")});
-          var ovpTabs=cloudData.filter(function(e){return e&&e.type==="ovp_tab"});
-          if(ovpMetas.length>0){
+          // ── Initial OVP pull from cloud (one-time, full chunk reassembly) ──
+          var ovpM=cloudData.filter(function(e){return e&&e.type==="ovp_config"});
+          if(ovpM.length>0){
+            var ovpD=cloudData.filter(function(e){return e&&e.type==="ovp_desc"});
+            var ovpI=cloudData.filter(function(e){return e&&(e.type==="ovp_ind"||e.type==="ovp_indicator")});
+            var ovpT=cloudData.filter(function(e){return e&&e.type==="ovp_tab"});
+            var ovpC=cloudData.filter(function(e){return e&&e.type==="ovp_comm"});
+            var ovpX=cloudData.filter(function(e){return e&&e.type==="ovp_desci"});
+            var ovpF=cloudData.filter(function(e){return e&&e.type==="ovp_form"});
+            var ovpB=cloudData.filter(function(e){return e&&e.type==="ovp_base"});
+            var ovpG=cloudData.filter(function(e){return e&&e.type==="ovp_t1"});
+            var jc=function(arr,pid,ii){return arr.filter(function(x){return x.parentId===pid&&(ii===undefined||x.indIdx===ii)}).sort(function(a,b){return(a.idx||0)-(b.idx||0)}).map(function(x){return x.text||""}).join("")};
             var localOvps=window._loadOVP()||[];
             var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
             var ovpChanged=false;
-            ovpMetas.forEach(function(e){
+            ovpM.forEach(function(e){
               var d=e.data||e;if(!d||!d.id)return;
               var ct=e.timestamp||"";var lt=(ovpById[d.id]||{})._ts||"";
               if(!ovpById[d.id]||ct>lt){
-                var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;
-                var lc=ovpById[d.id]||{};
-                // Reassemble description
-                if(d._split||!mc.descrizione){
-                  var myD=ovpDescs.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
-                  if(myD.length)mc.descrizione=myD.map(function(x){return x.text||""}).join("");
-                  if(lc.descrizione&&(!mc.descrizione||lc.descrizione.length>mc.descrizione.length))mc.descrizione=lc.descrizione;
-                }
-                // Reassemble indicators
+                var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;var lc=ovpById[d.id]||{};
+                if(d._split||!mc.descrizione){var cd=jc(ovpD,d.id);if(cd)mc.descrizione=cd;if(lc.descrizione&&(!mc.descrizione||lc.descrizione.length>mc.descrizione.length))mc.descrizione=lc.descrizione}
                 if(d._split||d._hasIndSplit||!mc.indicatori||!mc.indicatori.length){
-                  var myI=ovpInds.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
-                  if(myI.length){
-                    mc.indicatori=myI.map(function(ie){
-                      var ci=JSON.parse(JSON.stringify(ie.data||ie));
-                      var myT=ovpTabs.filter(function(x){return x.parentId===d.id&&x.indIdx===ie.idx}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
-                      if(myT.length)ci.tabData=myT.map(function(x){return x.text||""}).join("");
+                  var mi=ovpI.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
+                  if(mi.length){
+                    mc.indicatori=mi.map(function(ie){
+                      var ci=JSON.parse(JSON.stringify(ie.data||ie));var ii=ie.idx;
+                      var v;v=jc(ovpT,d.id,ii);if(v)ci.tabData=v;
+                      v=jc(ovpC,d.id,ii);if(v)ci.descrCommento=v;
+                      v=jc(ovpX,d.id,ii);if(v)ci.descrInd=v;
+                      v=jc(ovpF,d.id,ii);if(v)ci.formula=v;
+                      v=jc(ovpB,d.id,ii);if(v)ci.baseline=v;
+                      v=jc(ovpG,d.id,ii);if(v)ci.t1=v;
+                      delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;
                       return ci;
                     });
                     if(lc.indicatori){mc.indicatori=mc.indicatori.map(function(ci,idx){
                       var li=lc.indicatori[idx];if(!li)return ci;
-                      if(li.tabData&&(!ci.tabData||li.tabData.length>ci.tabData.length))ci.tabData=li.tabData;
-                      if(li.descrCommento&&(!ci.descrCommento||li.descrCommento.length>ci.descrCommento.length))ci.descrCommento=li.descrCommento;
-                      if(li.formula&&(!ci.formula||li.formula.length>ci.formula.length))ci.formula=li.formula;
+                      ["tabData","descrCommento","descrInd","formula","baseline","t1"].forEach(function(f){if(li[f]&&(!ci[f]||li[f].length>ci[f].length))ci[f]=li[f]});
                       return ci;
                     })}
                   }else if(lc.indicatori)mc.indicatori=lc.indicatori;
                 }
-                delete mc._split;delete mc._hasIndSplit;
+                delete mc._split;delete mc._hasIndSplit;delete mc._nInd;delete mc._nDesc;
                 ovpById[d.id]=mc;ovpChanged=true;
               }
             });
@@ -769,71 +772,92 @@ window._saveOVP = function(ovps){
   try{localStorage.setItem("ppo_ovp",JSON.stringify(ovps))}catch(e){}
 };
 // ═══ EXPLICIT cloud push — called ONLY by "Salva e Sincronizza" button ═══
-// Strategy: split each OVP into small cloud entries that always fit in GET URL
-window._OVP_CHUNK=2000;// max chars per text chunk
+// Every entry must produce a URL < 4500 chars (safe for Google redirect)
+window._OVP_CHUNK=800;// max chars per text chunk — safe after b64+urlencode
 window._syncOVPtoCloud = function(ovps,callback){
   if(!window.API_URL){if(callback)callback(false);return}
   var ts=new Date().toISOString();
-  var jobs=[];// array of {id, b64}
-  // Helper: test if an entry fits in URL
-  var fits=function(entry){
-    var b=window._b64(JSON.stringify(entry));
-    return(window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b)).length<=5500;
-  };
+  var jobs=[];
+  var CK=window._OVP_CHUNK;
   var mkJob=function(entry){
-    jobs.push({id:entry.id,b64:window._b64(JSON.stringify(entry))});
+    var b=window._b64(JSON.stringify(entry));
+    var url=window.API_URL+"?action=upsert&id="+entry.id+"&data="+encodeURIComponent(b);
+    if(url.length>5000){console.warn("[OVP SYNC] Entry troppo grande, skip: "+entry.id+" ("+url.length+" chars)");return false}
+    jobs.push({id:entry.id,b64:b});return true;
+  };
+  var splitText=function(text,prefix,parentId,type,extra){
+    if(!text)return;
+    for(var i=0;i<text.length;i+=CK){
+      var e={id:prefix+Math.floor(i/CK),type:type,timestamp:ts,parentId:parentId,idx:Math.floor(i/CK),text:text.substring(i,i+CK)};
+      if(extra)Object.keys(extra).forEach(function(k){e[k]=extra[k]});
+      mkJob(e);
+    }
   };
   ovps.forEach(function(ovp){
-    // Try full entry first
+    // Try full entry (small OVPs)
     var full={id:"OVP_"+ovp.id,type:"ovp_config",timestamp:ts,data:ovp};
-    if(fits(full)){mkJob(full);return}
-    // ── Split mode ──
-    // 1) Meta: no descrizione, no indicatori — just structure
-    var meta={id:ovp.id,cod:ovp.cod,nome:ovp.nome,missioni:ovp.missioni||[],_split:true};
-    var metaE={id:"OVP_"+ovp.id,type:"ovp_config",timestamp:ts,data:meta,
-      indCount:(ovp.indicatori||[]).length,
-      descrChunks:0};
-    // 2) Description chunks
-    var desc=ovp.descrizione||"";
-    var CK=window._OVP_CHUNK;
-    var dChunks=[];
-    for(var di=0;di<desc.length;di+=CK)dChunks.push(desc.substring(di,di+CK));
-    if(!dChunks.length)dChunks=[""];
-    metaE.descrChunks=dChunks.length;
-    mkJob(metaE);
-    dChunks.forEach(function(chunk,ci){
-      mkJob({id:"OVP_"+ovp.id+"_D"+ci,type:"ovp_desc",timestamp:ts,parentId:ovp.id,idx:ci,text:chunk});
-    });
-    // 3) Each indicator — truncate fields to fit, split tabData if needed
+    var fb=window._b64(JSON.stringify(full));
+    if((window.API_URL+"?action=upsert&id="+full.id+"&data="+encodeURIComponent(fb)).length<=4500){
+      jobs.push({id:full.id,b64:fb});return;
+    }
+    // ── Split mode for large OVPs ──
+    var nInd=(ovp.indicatori||[]).length;
+    var descLen=(ovp.descrizione||"").length;
+    var meta={id:ovp.id,cod:ovp.cod,nome:(ovp.nome||"").substring(0,200),missioni:ovp.missioni||[],_split:true,_nInd:nInd,_nDesc:Math.ceil(descLen/CK)||0};
+    mkJob({id:"OVP_"+ovp.id,type:"ovp_config",timestamp:ts,data:meta});
+    // Description chunks (unlimited length)
+    splitText(ovp.descrizione||"","OVP_"+ovp.id+"_D",ovp.id,"ovp_desc");
+    // Each indicator
     (ovp.indicatori||[]).forEach(function(ind,ii){
-      var ci=JSON.parse(JSON.stringify(ind));
-      // Remove tabData from main indicator entry — send separately
-      var rawTab=ci.tabData||"";delete ci.tabData;
-      // Truncate text fields to reasonable cloud limits
-      if(ci.descrCommento&&ci.descrCommento.length>CK)ci.descrCommento=ci.descrCommento.substring(0,CK);
-      if(ci.descrInd&&ci.descrInd.length>500)ci.descrInd=ci.descrInd.substring(0,500);
-      if(ci.formula&&ci.formula.length>500)ci.formula=ci.formula.substring(0,500);
-      if(ci.baseline&&ci.baseline.length>300)ci.baseline=ci.baseline.substring(0,300);
-      // Count tabData chunks
-      var tChunks=[];
-      for(var ti=0;ti<rawTab.length;ti+=CK)tChunks.push(rawTab.substring(ti,ti+CK));
-      ci._tabChunks=tChunks.length;
-      var indE={id:"OVP_"+ovp.id+"_I"+ii,type:"ovp_ind",timestamp:ts,parentId:ovp.id,idx:ii,data:ci};
-      if(!fits(indE)){
-        // Still too big — truncate more
-        if(ci.descrCommento&&ci.descrCommento.length>500)ci.descrCommento=ci.descrCommento.substring(0,500);
-        if(ci.formula&&ci.formula.length>300)ci.formula=ci.formula.substring(0,300);
-        if(ci.baseline&&ci.baseline.length>150)ci.baseline=ci.baseline.substring(0,150);
-        indE.data=ci;
+      var rawTab=ind.tabData||"";
+      var rawComm=ind.descrCommento||"";
+      var rawDescI=ind.descrInd||"";
+      var rawForm=ind.formula||"";
+      var rawBase=ind.baseline||"";
+      var rawT1=ind.t1||"";
+      // Core: only short fields inline, everything else chunked
+      var core={
+        nome:(ind.nome||"").substring(0,200),
+        fonte:(ind.fonte||"").substring(0,100),
+        t2:(ind.t2||"").substring(0,100),
+        tipo:ind.tipo||"",bes:ind.bes||"",
+        chartType:ind.chartType||"",chartTitle:ind.chartTitle||"",
+        xLabel:ind.xLabel||"",yLabel:ind.yLabel||"",
+        showLegend:ind.showLegend,useRowLabels:ind.useRowLabels,
+        _nTab:Math.ceil(rawTab.length/CK)||0,
+        _nComm:Math.ceil(rawComm.length/CK)||0,
+        _nDescI:Math.ceil(rawDescI.length/CK)||0,
+        _nForm:Math.ceil(rawForm.length/CK)||0,
+        _nBase:Math.ceil(rawBase.length/CK)||0,
+        _nT1:Math.ceil(rawT1.length/CK)||0
+      };
+      // Inline short fields
+      if(rawForm.length<=200){core.formula=rawForm;core._nForm=0}
+      if(rawBase.length<=200){core.baseline=rawBase;core._nBase=0}
+      if(rawT1.length<=200){core.t1=rawT1;core._nT1=0}
+      if(rawDescI.length<=200){core.descrInd=rawDescI;core._nDescI=0}
+      if(rawComm.length<=200){core.descrCommento=rawComm;core._nComm=0}
+      var indE={id:"OVP_"+ovp.id+"_I"+ii,type:"ovp_ind",timestamp:ts,parentId:ovp.id,idx:ii,data:core};
+      if(!mkJob(indE)){
+        // Strip all inline text
+        delete core.formula;core._nForm=Math.ceil(rawForm.length/CK)||0;
+        delete core.baseline;core._nBase=Math.ceil(rawBase.length/CK)||0;
+        delete core.t1;core._nT1=Math.ceil(rawT1.length/CK)||0;
+        delete core.descrInd;core._nDescI=Math.ceil(rawDescI.length/CK)||0;
+        delete core.descrCommento;core._nComm=Math.ceil(rawComm.length/CK)||0;
+        indE.data=core;mkJob(indE);
       }
-      mkJob(indE);
-      // TabData chunks
-      tChunks.forEach(function(chunk,tci){
-        mkJob({id:"OVP_"+ovp.id+"_I"+ii+"T"+tci,type:"ovp_tab",timestamp:ts,parentId:ovp.id,indIdx:ii,idx:tci,text:chunk});
-      });
+      // Chunk all long fields
+      var pre="OVP_"+ovp.id+"_I"+ii;
+      if(core._nTab)   splitText(rawTab,pre+"T",ovp.id,"ovp_tab",{indIdx:ii});
+      if(core._nComm)  splitText(rawComm,pre+"C",ovp.id,"ovp_comm",{indIdx:ii});
+      if(core._nDescI) splitText(rawDescI,pre+"X",ovp.id,"ovp_desci",{indIdx:ii});
+      if(core._nForm)  splitText(rawForm,pre+"F",ovp.id,"ovp_form",{indIdx:ii});
+      if(core._nBase)  splitText(rawBase,pre+"B",ovp.id,"ovp_base",{indIdx:ii});
+      if(core._nT1)    splitText(rawT1,pre+"G",ovp.id,"ovp_t1",{indIdx:ii});
     });
   });
-  // Execute all jobs
+  // Execute sequentially
   var done=0;var errors=0;var total=jobs.length;
   if(!total){if(callback)callback(true);return}
   console.log("[OVP SYNC] Invio "+total+" entries...");
@@ -843,8 +867,7 @@ window._syncOVPtoCloud = function(ovps,callback){
       if(callback)callback(errors===0);
       return;
     }
-    var job=jobs[ji];
-    window._cloudGet({action:"upsert",id:job.id,data:job.b64},function(r){
+    window._cloudGet({action:"upsert",id:jobs[ji].id,data:jobs[ji].b64},function(r){
       done++;if(!r)errors++;
       next(ji+1);
     });
@@ -856,12 +879,23 @@ window._pullOVPfromCloud = function(callback){
   if(!window.API_URL){if(callback)callback();return}
   window._cloudGet({action:"load"},function(cloudData){
     if(!cloudData||!Array.isArray(cloudData)){if(callback)callback();return}
-    // Categorize cloud entries
+    // Categorize cloud entries by type
     var metas=cloudData.filter(function(e){return e&&e.type==="ovp_config"});
     var descs=cloudData.filter(function(e){return e&&e.type==="ovp_desc"});
     var inds=cloudData.filter(function(e){return e&&(e.type==="ovp_ind"||e.type==="ovp_indicator")});
     var tabs=cloudData.filter(function(e){return e&&e.type==="ovp_tab"});
+    var comms=cloudData.filter(function(e){return e&&e.type==="ovp_comm"});
+    var descis=cloudData.filter(function(e){return e&&e.type==="ovp_desci"});
+    var forms=cloudData.filter(function(e){return e&&e.type==="ovp_form"});
+    var bases=cloudData.filter(function(e){return e&&e.type==="ovp_base"});
+    var t1s=cloudData.filter(function(e){return e&&e.type==="ovp_t1"});
     if(!metas.length){if(callback)callback();return}
+    // Helper: join chunks of a type for a given parent+indicator
+    var joinChunks=function(arr,pid,iIdx){
+      return arr.filter(function(x){return x.parentId===pid&&(iIdx===undefined||x.indIdx===iIdx)})
+        .sort(function(a,b){return(a.idx||0)-(b.idx||0)})
+        .map(function(x){return x.text||""}).join("");
+    };
     var localOvps=window._loadOVP()||[];
     var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
     var changed=false;
@@ -871,39 +905,43 @@ window._pullOVPfromCloud = function(callback){
       if(!ovpById[d.id]||ct>lt){
         var m=JSON.parse(JSON.stringify(d));m._ts=ct;
         var local=ovpById[d.id]||{};
-        // ── Reassemble description from chunks ──
+        // Reassemble description
         if(d._split||!m.descrizione){
-          var myDescs=descs.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
-          if(myDescs.length)m.descrizione=myDescs.map(function(x){return x.text||""}).join("");
-          // Keep local if longer
+          var cd=joinChunks(descs,d.id);
+          if(cd)m.descrizione=cd;
           if(local.descrizione&&(!m.descrizione||local.descrizione.length>m.descrizione.length))m.descrizione=local.descrizione;
         }
-        // ── Reassemble indicators ──
+        // Reassemble indicators
         if(d._split||d._hasIndSplit||!m.indicatori||!m.indicatori.length){
           var myInds=inds.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
           if(myInds.length){
             m.indicatori=myInds.map(function(ie){
               var ci=JSON.parse(JSON.stringify(ie.data||ie));
-              // Reassemble tabData from chunks
-              var myTabs=tabs.filter(function(x){return x.parentId===d.id&&x.indIdx===ie.idx}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
-              if(myTabs.length)ci.tabData=myTabs.map(function(x){return x.text||""}).join("");
+              var ii=ie.idx;
+              // Reassemble all chunked fields
+              var ct2=joinChunks(tabs,d.id,ii);if(ct2)ci.tabData=ct2;
+              var cc=joinChunks(comms,d.id,ii);if(cc)ci.descrCommento=cc;
+              var cx=joinChunks(descis,d.id,ii);if(cx)ci.descrInd=cx;
+              var cf=joinChunks(forms,d.id,ii);if(cf)ci.formula=cf;
+              var cb=joinChunks(bases,d.id,ii);if(cb)ci.baseline=cb;
+              var cg=joinChunks(t1s,d.id,ii);if(cg)ci.t1=cg;
+              // Clean up chunk count flags
+              delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;
               return ci;
             });
-            // Keep local fields if longer (cloud truncated)
+            // Keep local fields if longer
             if(local.indicatori){
               m.indicatori=m.indicatori.map(function(ci,idx){
                 var li=local.indicatori[idx];if(!li)return ci;
-                if(li.tabData&&(!ci.tabData||li.tabData.length>ci.tabData.length))ci.tabData=li.tabData;
-                if(li.descrCommento&&(!ci.descrCommento||li.descrCommento.length>ci.descrCommento.length))ci.descrCommento=li.descrCommento;
-                if(li.descrInd&&(!ci.descrInd||li.descrInd.length>ci.descrInd.length))ci.descrInd=li.descrInd;
-                if(li.formula&&(!ci.formula||li.formula.length>ci.formula.length))ci.formula=li.formula;
-                if(li.baseline&&(!ci.baseline||li.baseline.length>ci.baseline.length))ci.baseline=li.baseline;
+                ["tabData","descrCommento","descrInd","formula","baseline","t1"].forEach(function(f){
+                  if(li[f]&&(!ci[f]||li[f].length>ci[f].length))ci[f]=li[f];
+                });
                 return ci;
               });
             }
           }else if(local.indicatori)m.indicatori=local.indicatori;
         }
-        delete m._split;delete m._hasIndSplit;
+        delete m._split;delete m._hasIndSplit;delete m._nInd;delete m._nDesc;
         ovpById[d.id]=m;changed=true;
       }
     });
@@ -944,7 +982,7 @@ window.findSvc = function(svcCode){
 };
 window.getStrsBySvc = function(svcCode){return window._SUBS.filter(function(s){return s.type==="strategic"&&s.serviceCode===svcCode})};
 window.getOprsByStr = function(strId){return window._SUBS.filter(function(s){return s.type==="operative"&&s.parentId===strId})};
-window.sumWeights = function(entries){var t=0;entries.forEach(function(e){t+=parseFloat(e.data.peso)||0});return t};
+window.sumWeights = function(entries){var t=0;entries.forEach(function(e){if(e&&e.data)t+=parseFloat(e.data.peso)||0});return t};
 
 // ════════════════════════════════════════════════
 // PDF GENERATION
@@ -3626,7 +3664,7 @@ function App(){
 
   // Archive list HTML - with author info and individual delete
   var archHTML="";
-  if(subs.length){subs.slice().reverse().forEach(function(e){
+  if(subs.length){subs.filter(function(e){return e&&e.data&&e.type}).slice().reverse().forEach(function(e){
     var tl=e.type==="strategic"?"STR":"OPR",tc=e.type==="strategic"?"tag-str":"tag-opr";
     var authorLine="";
     if(e.createdBy) authorLine+='<span style="font-size:9px;color:#008758">Creato da: <b>'+e.createdBy+'</b> il '+new Date(e.createdAt||e.timestamp).toLocaleString("it-IT")+'</span>';
@@ -3635,7 +3673,7 @@ function App(){
     archHTML+='<div class="cd" style="padding:10px 12px;margin-bottom:6px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px"><div style="flex:1;min-width:0">';
     archHTML+='<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;flex-wrap:wrap"><span class="tag '+tc+'">'+tl+'</span><span style="font-family:monospace;font-weight:700;font-size:11px;color:#003366">'+e.serviceCode+'</span><span style="color:#5c6f82;font-size:10px">'+new Date(e.timestamp).toLocaleString("it-IT")+'</span></div>';
     archHTML+='<div style="font-weight:600;font-size:12px">'+e.serviceName+'</div>';
-    if(e.data.nome)archHTML+='<div style="color:#5c6f82;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.data.codice||"")+' - '+e.data.nome+'</div>';
+    if(e.data&&e.data.nome)archHTML+='<div style="color:#5c6f82;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.data.codice||"")+' - '+e.data.nome+'</div>';
     if(authorLine) archHTML+='<div style="margin-top:3px">'+authorLine+'</div>';
     archHTML+='</div><div style="display:flex;gap:3px;flex-shrink:0">';
     archHTML+='<button data-act="pdf" data-eid="'+e.id+'" style="padding:3px 8px;font-size:10px;font-weight:600;background:#fff;color:#0066cc;border:1.5px solid #0066cc;border-radius:3px;cursor:pointer">PDF</button>';
@@ -4077,7 +4115,7 @@ function App(){
                   ),
                   h("textarea",{style:{width:"100%",padding:6,border:"1px solid #d9dadb",borderRadius:3,fontSize:11,minHeight:36,fontFamily:"inherit",resize:"vertical"},value:ovp.nome,onChange:function(e){updateOvp(ovp.id,{nome:e.target.value})}}),
                   h("div",{style:{fontSize:9,fontWeight:600,marginTop:6,marginBottom:2,color:"#5c6f82"}},"Descrizione OVP"),
-                  h("textarea",{style:{width:"100%",padding:6,border:"1px solid #d9dadb",borderRadius:3,fontSize:11,minHeight:50,fontFamily:"inherit",resize:"vertical"},value:ovp.descrizione||"",onChange:function(e){updateOvp(ovp.id,{descrizione:e.target.value})},placeholder:"Descrizione dettagliata dell'Obiettivo di Valore Pubblico..."})
+                  h("textarea",{style:{width:"100%",padding:8,border:"1px solid #d9dadb",borderRadius:3,fontSize:11,minHeight:120,fontFamily:"inherit",resize:"vertical",lineHeight:"1.5"},value:ovp.descrizione||"",onChange:function(e){updateOvp(ovp.id,{descrizione:e.target.value})},placeholder:"Descrizione dettagliata dell'Obiettivo di Valore Pubblico..."})
                 ),
                 h("button",{onClick:function(){removeOvp(ovp.id)},style:{padding:"4px 8px",background:"#d9364f",color:"#fff",border:"none",borderRadius:3,fontSize:10,cursor:"pointer"}},"Elimina")
               ),
@@ -4111,8 +4149,8 @@ function App(){
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Fonte"),h("textarea",{style:TS3,value:ind.fonte||"",onChange:function(e){uInd("fonte",e.target.value)}}))
                     ),
                     h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginBottom:6}},
-                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Baseline"),h("input",{style:IS3,value:ind.baseline||"",onChange:function(e){uInd("baseline",e.target.value)}})),
-                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2,color:"#0066cc"}},"Obiettivo Target / Risultato Atteso"),h("input",{style:Object.assign({},IS3,{fontWeight:700,color:"#0066cc"}),value:ind.t1||"",onChange:function(e){uInd("t1",e.target.value)}})),
+                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Baseline"),h("textarea",{style:Object.assign({},IS3,{minHeight:32,resize:"vertical"}),value:ind.baseline||"",onChange:function(e){uInd("baseline",e.target.value)}})),
+                      h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2,color:"#0066cc"}},"Obiettivo Target / Risultato Atteso"),h("textarea",{style:Object.assign({},IS3,{minHeight:32,resize:"vertical",fontWeight:700,color:"#0066cc"}),value:ind.t1||"",onChange:function(e){uInd("t1",e.target.value)}})),
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Data conseguimento Risultato Atteso"),h("input",{style:IS3,value:ind.t2||"",onChange:function(e){uInd("t2",e.target.value)},placeholder:"es. 2026-12-31"})),
                       h("div",null,h("div",{style:{fontSize:9,fontWeight:600,marginBottom:2}},"Tipo"),h("select",{style:IS3,value:ind.tipo||"",onChange:function(e){uInd("tipo",e.target.value)}},h("option",{value:"Output"},"Output"),h("option",{value:"Outcome"},"Outcome")))
                     ),

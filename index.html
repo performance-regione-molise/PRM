@@ -115,6 +115,8 @@ window._proFull=function(cod){
 
 window._isDeletedUser = function(name){return !!window._deletedUserNames[name]};
 window._filterDeleted = function(arr){return arr.filter(function(e){return e&&e.id&&!window._deletedIds[e.id]});};
+// Sanitize: remove OVP chunks and entries without valid data from _SUBS
+window._sanitizeSubs = function(arr){return arr.filter(function(e){return e&&e.id&&e.data&&e.type&&e.id.indexOf("OVP_")!==0&&e.type!=="ovp_config"&&e.type!=="ovp_desc"&&e.type!=="ovp_ind"&&e.type!=="ovp_indicator"&&e.type!=="ovp_tab"&&e.type!=="ovp_comm"&&e.type!=="ovp_desci"&&e.type!=="ovp_form"&&e.type!=="ovp_base"&&e.type!=="ovp_t1"});};
 
 // ── Encode/Decode per URL (supporta UTF-8) ──
 window._b64 = function(s){return btoa(unescape(encodeURIComponent(s)))};
@@ -176,6 +178,7 @@ window._processQueue = function(){
 
 // ── Save to localStorage ──
 window._save = function(s){
+  s = window._sanitizeSubs ? window._sanitizeSubs(s) : s;
   window._SUBS = s;
   try{
     localStorage.setItem(window.SK, JSON.stringify(s));
@@ -344,7 +347,7 @@ window._load = function(){
             }
           });
           // Filtra eliminati dal merge finale
-          var merged=window._filterDeleted(Object.keys(byId).map(function(k){return byId[k]}));
+          var merged=window._sanitizeSubs(window._filterDeleted(Object.keys(byId).map(function(k){return byId[k]})));
           window._SUBS=merged;
           try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
           // Push local-only (non eliminati)
@@ -421,7 +424,7 @@ window._load = function(){
             }
           }
         }else if(local.length>0){
-          var filtered=window._filterDeleted(local);
+          var filtered=window._sanitizeSubs(window._filterDeleted(local));
           window._SUBS=filtered;
           window._cloudBulkPush(filtered);
         }
@@ -455,7 +458,7 @@ window._forceSync = function(){
         else{var ct=byId[e.id].lastModifiedAt||byId[e.id].timestamp||"";var lt=e.lastModifiedAt||e.timestamp||"";if(lt>ct){byId[e.id]=e;toPush.push(e)}}
       });
       // Filtra eliminati dal merge finale
-      var merged=window._filterDeleted(Object.keys(byId).map(function(k){return byId[k]}));
+      var merged=window._sanitizeSubs(window._filterDeleted(Object.keys(byId).map(function(k){return byId[k]})));
       window._SUBS=merged;
       try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
       window.dispatchEvent(new Event("subsChanged"));
@@ -483,7 +486,7 @@ window._startAutoSync=function(){
     window._loadDeletedIds(function(){
       // Remove deleted entries from local
       var before=window._SUBS.length;
-      window._SUBS=window._filterDeleted(window._SUBS);
+      window._SUBS=window._sanitizeSubs(window._filterDeleted(window._SUBS));
       if(window._SUBS.length<before){
         try{localStorage.setItem(window.SK,JSON.stringify(window._SUBS));localStorage.setItem(window.SK+"_backup",JSON.stringify(window._SUBS))}catch(e){}
         window.dispatchEvent(new Event("subsChanged"));
@@ -502,7 +505,7 @@ window._startAutoSync=function(){
           console.log("[AUTO-SYNC] Pull: +"+cloudOnly.length+" dal cloud");
           var byId={};window._SUBS.forEach(function(e){if(e&&e.id)byId[e.id]=e});
           cloudOnly.forEach(function(e){byId[e.id]=e});
-          var merged=Object.keys(byId).map(function(k){return byId[k]});
+          var merged=window._sanitizeSubs(Object.keys(byId).map(function(k){return byId[k]}));
           window._SUBS=merged;
           try{localStorage.setItem(window.SK,JSON.stringify(merged));localStorage.setItem(window.SK+"_backup",JSON.stringify(merged))}catch(e){}
           window.dispatchEvent(new Event("subsChanged"));
@@ -610,7 +613,7 @@ window._recover = function(){
       window._syncing=false;
       window.dispatchEvent(new Event("syncStatus"));
       // Aggiorna locale con cloud
-      window._SUBS=cloudData||[];
+      window._SUBS=window._sanitizeSubs(cloudData||[]);
       try{localStorage.setItem(window.SK,JSON.stringify(window._SUBS))}catch(e){}
       window.dispatchEvent(new Event("subsChanged"));
       alert("Nessun dato locale aggiuntivo trovato.\nCloud: "+cloudN+" schede\nLocale: "+localAll.length+" schede\n\nTutto allineato. Prova da un altro browser.");
@@ -627,7 +630,7 @@ window._recover = function(){
           window._syncing=false;
           window.dispatchEvent(new Event("syncStatus"));
           var finalN=final?final.length:0;
-          window._SUBS=final||[];
+          window._SUBS=window._sanitizeSubs(final||[]);
           try{localStorage.setItem(window.SK,JSON.stringify(window._SUBS));localStorage.setItem(window.SK+"_backup",JSON.stringify(window._SUBS))}catch(e){}
           window.dispatchEvent(new Event("subsChanged"));
           alert("RECUPERO COMPLETATO!\n\nPrima: "+cloudN+" nel cloud\nCaricate: "+done+" (fallite: "+fail+")\nCloud ora: "+finalN+" schede\n\nOra tutti i browser vedranno "+finalN+" schede con Sync.");
@@ -2621,7 +2624,7 @@ function OVPChart(p){
 }
 
 function Dash(p){
-  var s=p.subs;
+  var s=p.subs.filter(function(x){return x&&x.data&&x.type});
   var strs=s.filter(function(x){return x.type==="strategic"});
   var oprs=s.filter(function(x){return x.type==="operative"});
   var nS=strs.length,nO=oprs.length;
@@ -3358,7 +3361,7 @@ function Dash(p){
 function App(){
   var _v=useState("select"),v=_v[0],setV=_v[1];
   var _svc=useState(null),svc=_svc[0],setSvc=_svc[1];
-  var _sub=useState(function(){var d=window._load();window._SUBS=d;return d}),subs=_sub[0],setSubs=_sub[1];
+  var _sub=useState(function(){var d=window._sanitizeSubs(window._load());window._SUBS=d;return d}),subs=_sub[0],setSubs=_sub[1];
   var _t=useState(null),toast=_t[0],setToast=_t[1];
   var _s=useState(""),search=_s[0],setSearch=_s[1];
   var _log=useState(false),logged=_log[0],setLogged=_log[1];
@@ -3421,7 +3424,7 @@ function App(){
   var _ca=useState(""),curAuthor=_ca[0],setCA=_ca[1];
   var _ch=useState(""),curHash=_ch[0],setCH=_ch[1];
 
-  useEffect(function(){var handler=function(){setSubs(window._SUBS.slice())};window.addEventListener("subsChanged",handler);return function(){window.removeEventListener("subsChanged",handler)}},[]);
+  useEffect(function(){var handler=function(){setSubs(window._sanitizeSubs(window._SUBS))};window.addEventListener("subsChanged",handler);return function(){window.removeEventListener("subsChanged",handler)}},[]);
   useEffect(function(){var handler=function(){try{var u=JSON.parse(localStorage.getItem("ppo_users")||"[]");setUsers(u)}catch(e){}};window.addEventListener("usersChanged",handler);return function(){window.removeEventListener("usersChanged",handler)}},[]);
   // Admin edit from archive
   useEffect(function(){
@@ -3449,7 +3452,7 @@ function App(){
 
   // Get objectives for current service
   var svcStrs=svc?subs.filter(function(s){return s.type==="strategic"&&s.serviceCode===svc.code}):[];
-  var strWeightSum=0;svcStrs.forEach(function(s){strWeightSum+=parseFloat(s.data.peso)||0});
+  var strWeightSum=0;svcStrs.forEach(function(s){if(s&&s.data)strWeightSum+=parseFloat(s.data.peso)||0});
 
   // ── Credential flow ──
   // User registry (stored alongside data)

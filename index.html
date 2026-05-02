@@ -857,22 +857,33 @@ window._syncOVPtoCloud = function(ovps,callback){
       if(core._nT1)    splitText(rawT1,pre+"G",ovp.id,"ovp_t1",{indIdx:ii});
     });
   });
-  // Execute sequentially
+  // Execute sequentially with delay and retry
   var done=0;var errors=0;var total=jobs.length;
   if(!total){if(callback)callback(true);return}
   console.log("[OVP SYNC] Invio "+total+" entries...");
-  var next=function(ji){
+  var next=function(ji,retry){
     if(ji>=jobs.length){
-      console.log("[OVP SYNC] "+done+"/"+total+" OK, "+errors+" errori");
+      console.log("[OVP SYNC] Completato: "+done+"/"+total+" OK, "+errors+" errori");
       if(callback)callback(errors===0);
       return;
     }
-    window._cloudGet({action:"upsert",id:jobs[ji].id,data:jobs[ji].b64},function(r){
-      done++;if(!r)errors++;
-      next(ji+1);
+    var job=jobs[ji];
+    // Log progress every 5 entries
+    if(ji%5===0)console.log("[OVP SYNC] "+ji+"/"+total+"...");
+    window._cloudGet({action:"upsert",id:job.id,data:job.b64},function(r){
+      if(!r&&(retry||0)<2){
+        // Retry this entry after a longer pause
+        console.warn("[OVP SYNC] Retry "+job.id+" ("+(retry||0)+"/2)");
+        setTimeout(function(){next(ji,(retry||0)+1)},1500);
+      }else{
+        done++;
+        if(!r){errors++;console.warn("[OVP SYNC] Fallito: "+job.id)}
+        // Delay 400ms between calls to avoid Google throttling
+        setTimeout(function(){next(ji+1,0)},400);
+      }
     });
   };
-  next(0);
+  next(0,0);
 };
 // ═══ EXPLICIT cloud pull — load OVP from cloud, merge (cloud wins) ═══
 window._pullOVPfromCloud = function(callback){

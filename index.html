@@ -370,7 +370,7 @@ window._load = function(){
           }
           window.dispatchEvent(new Event("subsChanged"));
           console.log("Cloud load: "+merged.length+" (cloud:"+cloudData.length+", local:"+local.length+", deleted:"+Object.keys(window._deletedIds).length+")");
-          // ── Initial OVP pull from cloud (one-time, full chunk reassembly) ──
+          // ── Initial OVP pull from cloud (one-time, cloud wins) ──
           var ovpM=cloudData.filter(function(e){return e&&e.type==="ovp_config"});
           if(ovpM.length>0){
             var ovpD=cloudData.filter(function(e){return e&&e.type==="ovp_desc"});
@@ -389,10 +389,13 @@ window._load = function(){
               var d=e.data||e;if(!d||!d.id)return;
               var ct=e.timestamp||"";var lt=(ovpById[d.id]||{})._ts||"";
               if(!ovpById[d.id]||ct>lt){
-                var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;var lc=ovpById[d.id]||{};
-                if(d._split||!mc.descrizione){var cd=jc(ovpD,d.id);if(cd)mc.descrizione=cd;if(lc.descrizione&&(!mc.descrizione||lc.descrizione.length>mc.descrizione.length))mc.descrizione=lc.descrizione}
-                if(d._split||d._hasIndSplit||!mc.indicatori||!mc.indicatori.length){
+                var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;
+                // Description: cloud wins
+                if(d._split||!mc.descrizione){var cd=jc(ovpD,d.id);if(cd)mc.descrizione=cd}
+                // Indicators: cloud wins, use _nInd to limit
+                if(d._split||!mc.indicatori||!mc.indicatori.length){
                   var mi=ovpI.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
+                  var nInd=d._nInd||mi.length;if(nInd>0)mi=mi.slice(0,nInd);
                   if(mi.length){
                     mc.indicatori=mi.map(function(ie){
                       var ci=JSON.parse(JSON.stringify(ie.data||ie));var ii=ie.idx;
@@ -405,12 +408,7 @@ window._load = function(){
                       delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;
                       return ci;
                     });
-                    if(lc.indicatori){mc.indicatori=mc.indicatori.map(function(ci,idx){
-                      var li=lc.indicatori[idx];if(!li)return ci;
-                      ["tabData","descrCommento","descrInd","formula","baseline","t1"].forEach(function(f){if(li[f]&&(!ci[f]||li[f].length>ci[f].length))ci[f]=li[f]});
-                      return ci;
-                    })}
-                  }else if(lc.indicatori)mc.indicatori=lc.indicatori;
+                  }
                 }
                 delete mc._split;delete mc._hasIndSplit;delete mc._nInd;delete mc._nDesc;
                 ovpById[d.id]=mc;ovpChanged=true;
@@ -860,6 +858,14 @@ window._syncOVPtoCloud = function(ovps,callback){
       if(core._nT1)    splitText(rawT1,pre+"G",ovp.id,"ovp_t1",{indIdx:ii});
     });
   });
+  // ── Cleanup: delete old indicator entries beyond current count ──
+  // Only delete main indicator entries — sub-chunks are harmless without parent
+  ovps.forEach(function(ovp){
+    var nInd=(ovp.indicatori||[]).length;
+    for(var oi=nInd;oi<nInd+20;oi++){
+      jobs.push({id:"DEL_OVP_"+ovp.id+"_I"+oi,b64:"",isDel:true,delId:"OVP_"+ovp.id+"_I"+oi});
+    }
+  });
   // Execute sequentially with delay and retry
   var done=0;var errors=0;var total=jobs.length;
   if(!total){if(callback)callback(true);return}
@@ -871,29 +877,30 @@ window._syncOVPtoCloud = function(ovps,callback){
       return;
     }
     var job=jobs[ji];
-    // Log progress every 5 entries
-    if(ji%5===0)console.log("[OVP SYNC] "+ji+"/"+total+"...");
-    window._cloudGet({action:"upsert",id:job.id,data:job.b64},function(r){
-      if(!r&&(retry||0)<2){
+    // Log progress every 10 entries
+    if(ji%10===0&&ji<total-20)console.log("[OVP SYNC] "+ji+"/"+total+"...");
+    // Delete jobs vs upsert jobs
+    var params=job.isDel?{action:"deleteEntry",id:job.delId}:{action:"upsert",id:job.id,data:job.b64};
+    window._cloudGet(params,function(r){
+      if(!r&&!job.isDel&&(retry||0)<2){
         // Retry this entry after a longer pause
         console.warn("[OVP SYNC] Retry "+job.id+" ("+(retry||0)+"/2)");
         setTimeout(function(){next(ji,(retry||0)+1)},1500);
       }else{
         done++;
-        if(!r){errors++;console.warn("[OVP SYNC] Fallito: "+job.id)}
-        // Delay 400ms between calls to avoid Google throttling
-        setTimeout(function(){next(ji+1,0)},400);
+        if(!r&&!job.isDel){errors++;console.warn("[OVP SYNC] Fallito: "+job.id)}
+        // Shorter delay for deletes (100ms) vs upserts (400ms)
+        setTimeout(function(){next(ji+1,0)},job.isDel?100:400);
       }
     });
   };
   next(0,0);
 };
-// ═══ EXPLICIT cloud pull — load OVP from cloud, merge (cloud wins) ═══
+// ═══ EXPLICIT cloud pull — cloud ALWAYS wins (no "keep local if longer") ═══
 window._pullOVPfromCloud = function(callback){
   if(!window.API_URL){if(callback)callback();return}
   window._cloudGet({action:"load"},function(cloudData){
     if(!cloudData||!Array.isArray(cloudData)){if(callback)callback();return}
-    // Categorize cloud entries by type
     var metas=cloudData.filter(function(e){return e&&e.type==="ovp_config"});
     var descs=cloudData.filter(function(e){return e&&e.type==="ovp_desc"});
     var inds=cloudData.filter(function(e){return e&&(e.type==="ovp_ind"||e.type==="ovp_indicator")});
@@ -904,7 +911,6 @@ window._pullOVPfromCloud = function(callback){
     var bases=cloudData.filter(function(e){return e&&e.type==="ovp_base"});
     var t1s=cloudData.filter(function(e){return e&&e.type==="ovp_t1"});
     if(!metas.length){if(callback)callback();return}
-    // Helper: join chunks of a type for a given parent+indicator
     var joinChunks=function(arr,pid,iIdx){
       return arr.filter(function(x){return x.parentId===pid&&(iIdx===undefined||x.indIdx===iIdx)})
         .sort(function(a,b){return(a.idx||0)-(b.idx||0)})
@@ -915,55 +921,45 @@ window._pullOVPfromCloud = function(callback){
     var changed=false;
     metas.forEach(function(e){
       var d=e.data||e;if(!d||!d.id)return;
-      var ct=e.timestamp||"";var lt=(ovpById[d.id]||{})._ts||"";
-      if(!ovpById[d.id]||ct>lt){
-        var m=JSON.parse(JSON.stringify(d));m._ts=ct;
-        var local=ovpById[d.id]||{};
-        // Reassemble description
-        if(d._split||!m.descrizione){
-          var cd=joinChunks(descs,d.id);
-          if(cd)m.descrizione=cd;
-          if(local.descrizione&&(!m.descrizione||local.descrizione.length>m.descrizione.length))m.descrizione=local.descrizione;
-        }
-        // Reassemble indicators
-        if(d._split||d._hasIndSplit||!m.indicatori||!m.indicatori.length){
-          var myInds=inds.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
-          if(myInds.length){
-            m.indicatori=myInds.map(function(ie){
-              var ci=JSON.parse(JSON.stringify(ie.data||ie));
-              var ii=ie.idx;
-              // Reassemble all chunked fields
-              var ct2=joinChunks(tabs,d.id,ii);if(ct2)ci.tabData=ct2;
-              var cc=joinChunks(comms,d.id,ii);if(cc)ci.descrCommento=cc;
-              var cx=joinChunks(descis,d.id,ii);if(cx)ci.descrInd=cx;
-              var cf=joinChunks(forms,d.id,ii);if(cf)ci.formula=cf;
-              var cb=joinChunks(bases,d.id,ii);if(cb)ci.baseline=cb;
-              var cg=joinChunks(t1s,d.id,ii);if(cg)ci.t1=cg;
-              // Clean up chunk count flags
-              delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;
-              return ci;
-            });
-            // Keep local fields if longer
-            if(local.indicatori){
-              m.indicatori=m.indicatori.map(function(ci,idx){
-                var li=local.indicatori[idx];if(!li)return ci;
-                ["tabData","descrCommento","descrInd","formula","baseline","t1"].forEach(function(f){
-                  if(li[f]&&(!ci[f]||li[f].length>ci[f].length))ci[f]=li[f];
-                });
-                return ci;
-              });
-            }
-          }else if(local.indicatori)m.indicatori=local.indicatori;
-        }
-        delete m._split;delete m._hasIndSplit;delete m._nInd;delete m._nDesc;
-        ovpById[d.id]=m;changed=true;
+      // Cloud ALWAYS wins on explicit pull — no timestamp check
+      var m=JSON.parse(JSON.stringify(d));m._ts=e.timestamp||"";
+      // Reassemble description from chunks (cloud wins)
+      if(d._split||!m.descrizione){
+        var cd=joinChunks(descs,d.id);
+        if(cd)m.descrizione=cd;
       }
+      // Reassemble indicators from chunks (cloud wins, use _nInd to limit)
+      if(d._split||!m.indicatori||!m.indicatori.length){
+        var myInds=inds.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
+        // Use _nInd from meta to limit — old chunks may still exist in cloud
+        var nInd=d._nInd||myInds.length;
+        if(nInd>0)myInds=myInds.slice(0,nInd);
+        if(myInds.length){
+          m.indicatori=myInds.map(function(ie){
+            var ci=JSON.parse(JSON.stringify(ie.data||ie));
+            var ii=ie.idx;
+            var v;
+            v=joinChunks(tabs,d.id,ii);if(v)ci.tabData=v;
+            v=joinChunks(comms,d.id,ii);if(v)ci.descrCommento=v;
+            v=joinChunks(descis,d.id,ii);if(v)ci.descrInd=v;
+            v=joinChunks(forms,d.id,ii);if(v)ci.formula=v;
+            v=joinChunks(bases,d.id,ii);if(v)ci.baseline=v;
+            v=joinChunks(t1s,d.id,ii);if(v)ci.t1=v;
+            delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;
+            return ci;
+          });
+          // NO "keep local if longer" — cloud wins completely
+        }
+        // If no cloud indicators found AND no _nInd set, keep nothing (cloud said 0)
+      }
+      delete m._split;delete m._hasIndSplit;delete m._nInd;delete m._nDesc;
+      ovpById[d.id]=m;changed=true;
     });
     if(changed){
       var arr=Object.keys(ovpById).map(function(k){return ovpById[k]});
       try{localStorage.setItem("ppo_ovp",JSON.stringify(arr))}catch(e){}
       window.dispatchEvent(new Event("ovpChanged"));
-      console.log("[OVP] Caricati "+arr.length+" OVP dal cloud");
+      console.log("[OVP] Caricati "+arr.length+" OVP dal cloud (cloud vince)");
     }
     if(callback)callback();
   });
@@ -1717,7 +1713,7 @@ window._exportOVPpiao=function(){
     try{
       if(!window.Chart)return null;
       var hasTabData=!!(tbl&&tbl.headers&&tbl.rows&&tbl.rows.length);
-      var cvsW=hasTabData?700:400;var cvsH=hasTabData?420:280;
+      var cvsW=hasTabData?600:350;var cvsH=hasTabData?360:240;
       var cvs=document.createElement("canvas");cvs.width=cvsW;cvs.height=cvsH;
       var labels=[];var datasets=[];
       if(hasTabData){
@@ -1749,8 +1745,8 @@ window._exportOVPpiao=function(){
           backgroundColor:type==="line"?"rgba("+(i===0?"0,51,102":i===1?"0,102,204":i===2?"0,135,88":"217,54,79")+",0.1)":(type==="pie"?["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#1abc9c","#f39c12"]:c),
           borderColor:c,borderWidth:type==="line"?2:1,tension:0.3,fill:type==="line",
           pointRadius:type==="line"?4:0,pointBackgroundColor:c}
-      })},options:{responsive:false,animation:false,devicePixelRatio:2,layout:{padding:8},plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||"",font:{size:14,weight:"bold"},color:"#003366",padding:10},legend:{display:ind.showLegend!==false,position:"bottom",labels:{font:{size:11},padding:10,usePointStyle:true}}},scales:type==="pie"?{}:{y:{beginAtZero:type!=="line",stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:10},padding:4},grid:{color:"rgba(0,0,0,0.08)"}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:8},maxRotation:45,padding:4},grid:{display:false}}}}});
-      var img=cvs.toDataURL("image/png");chart.destroy();return img;
+      })},options:{responsive:false,animation:false,devicePixelRatio:1.5,layout:{padding:8},plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||"",font:{size:14,weight:"bold"},color:"#003366",padding:10},legend:{display:ind.showLegend!==false,position:"bottom",labels:{font:{size:11},padding:10,usePointStyle:true}}},scales:type==="pie"?{}:{y:{beginAtZero:type!=="line",stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:10},padding:4},grid:{color:"rgba(0,0,0,0.08)"}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:8},maxRotation:45,padding:4},grid:{display:false}}}}});
+      var img=cvs.toDataURL("image/jpeg",0.85);chart.destroy();return img;
     }catch(e){console.warn("Chart error:",e);return null}
   };
   var freq=function(arr){var m={};arr.forEach(function(v){if(v)m[v]=(m[v]||0)+1});return Object.keys(m).sort().map(function(k){return{label:k,count:m[k]}})};
@@ -1829,9 +1825,13 @@ window._exportOVPpiao=function(){
         var tbl=null;try{tbl=JSON.parse(ind.tabData)}catch(e){}
         var chartImg=renderChart(ind,tbl);
         // Indicator header
-        doc.setFillColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,5,"F");
+        // Indicator header — adaptive height for long names
+        var indTitle="Indicatore "+(ii+1)+": "+(ind.nome||"");
+        var indTitleLines=doc.splitTextToSize(indTitle,W-28);
+        var indTitleH=Math.max(6,indTitleLines.length*4+2);
+        doc.setFillColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,indTitleH,"F");
         doc.setTextColor(255);doc.setFontSize(8);doc.setFont(undefined,"bold");
-        doc.text("Indicatore "+(ii+1)+": "+(ind.nome||""),mx+3,pageY+3.5);pageY+=7;
+        doc.text(indTitleLines,mx+3,pageY+3.5);pageY+=indTitleH+2;
         // Row 1: table
         var tb1=[];
         tb1.push([
@@ -1875,7 +1875,7 @@ window._exportOVPpiao=function(){
             var cW=180;var cH=108;
             checkPage(cH+8);
             var cx=(W-20-cW)/2+mx;
-            try{doc.addImage(chartImg,"PNG",cx,pageY,cW,cH)}catch(e){}
+            try{doc.addImage(chartImg,"JPEG",cx,pageY,cW,cH)}catch(e){}
             pageY+=cH+4;
           }
         }else if(chartImg){
@@ -1883,7 +1883,7 @@ window._exportOVPpiao=function(){
           var cW2=130;var cH2=91;
           checkPage(cH2+8);
           var cx2=(W-20-cW2)/2+mx;
-          try{doc.addImage(chartImg,"PNG",cx2,pageY,cW2,cH2)}catch(e){}
+          try{doc.addImage(chartImg,"JPEG",cx2,pageY,cW2,cH2)}catch(e){}
           pageY+=cH2+4;
         }
         if(ind.descrCommento){

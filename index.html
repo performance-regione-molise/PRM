@@ -1832,7 +1832,7 @@ window._exportOVPpiao=function(){
         doc.setFillColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,indTitleH,"F");
         doc.setTextColor(255);doc.setFontSize(8);doc.setFont(undefined,"bold");
         doc.text(indTitleLines,mx+3,pageY+3.5);pageY+=indTitleH+2;
-        // Row 1: table
+        // Row 1: table with Tipo column
         var tb1=[];
         tb1.push([
           {content:"Indicatore",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
@@ -1840,13 +1840,17 @@ window._exportOVPpiao=function(){
           {content:"Fonte",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
           {content:"Baseline",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
           {content:"Obiettivo Target\nRisultato Atteso",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
-          {content:"Data prevista\nconseguimento",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}}
+          {content:"Data prevista\nconseguimento",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
+          {content:"Tipo",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}}
         ]);
-        tb1.push([ind.nome||"",ind.formula||"",ind.fonte||"",ind.baseline||"",ind.t1||"",ind.t2||""]);
+        tb1.push([ind.nome||"",ind.formula||"",ind.fonte||"",ind.baseline||"",ind.t1||"",ind.t2||"",ind.tipo||""]);
         if(ind.descrInd){
-          tb1.push([{content:"Descrizione indicatore: "+(ind.descrInd||""),colSpan:6,styles:{fontStyle:"italic",fontSize:6.5}}]);
+          tb1.push([{content:"Descrizione indicatore: "+(ind.descrInd||""),colSpan:7,styles:{fontStyle:"italic",fontSize:6.5}}]);
         }
-        doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:tb1,theme:"grid",styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2,overflow:"linebreak"}});
+        doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:tb1,theme:"grid",
+          styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2,overflow:"linebreak"},
+          columnStyles:{0:{cellWidth:42},1:{cellWidth:50},2:{cellWidth:30},3:{cellWidth:45},4:{cellWidth:45},5:{cellWidth:28},6:{cellWidth:22}}
+        });
         pageY=doc.lastAutoTable.finalY+4;
         // ── Chart section ──
         if(tbl&&tbl.headers&&tbl.rows){
@@ -2048,19 +2052,36 @@ window._exportOVPpiao=function(){
       pageY=doc.lastAutoTable.finalY+4;
     }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("Nessun obiettivo strategico collegato.",mx+4,pageY+3);pageY+=6;}
   });
-  // ═══ TOC ═══
+  // ═══ TOC with clickable links ═══
   doc.setPage(tocPageNum);
   var ty=20;
   doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(14);doc.setFont(undefined,"bold");
   doc.text("Indice",mx,ty+6);ty+=12;
   tocEntries.forEach(function(e){
+    if(ty>H-15){doc.addPage("a4","landscape");firstPage=false;addHeader();ty=20;}
     doc.setFontSize(e.level===1?9:8);doc.setFont(undefined,e.level===1?"bold":"normal");
     if(e.level===1){doc.setTextColor(RC[0],RC[1],RC[2])}else{doc.setTextColor(80,80,80)}
     var indent=e.level===1?0:8;
-    doc.text(e.text.substring(0,100),mx+indent,ty+3);
-    doc.text("pag. "+e.page,W-mx-2,ty+3,{align:"right"});
-    ty+=e.level===1?5.5:4;
-    if(ty>H-15){doc.addPage("a4","landscape");firstPage=false;addHeader();ty=20;}
+    var tocText=e.text.substring(0,100);
+    var pageRef="pag. "+e.page;
+    // Draw text
+    doc.text(tocText,mx+indent,ty+3);
+    doc.text(pageRef,W-mx-2,ty+3,{align:"right"});
+    // Dots between text and page number
+    var textW=doc.getTextWidth(tocText);
+    var pageW=doc.getTextWidth(pageRef);
+    var dotStart=mx+indent+textW+2;
+    var dotEnd=W-mx-2-pageW-2;
+    if(dotEnd>dotStart+8){
+      doc.setTextColor(180,180,180);doc.setFontSize(6);
+      var dots="";for(var di=0;di<Math.floor((dotEnd-dotStart)/1.5);di++)dots+=".";
+      doc.text(dots,dotStart,ty+3);
+      if(e.level===1){doc.setTextColor(RC[0],RC[1],RC[2])}else{doc.setTextColor(80,80,80)}
+    }
+    // Clickable link area — jumps to the target page
+    var linkH=e.level===1?5.5:4;
+    try{doc.link(mx+indent,ty-1,W-2*mx,linkH,{pageNumber:e.page})}catch(ex){}
+    ty+=linkH;
   });
   // ═══ FOOTERS on all pages ═══
   var tp=doc.getNumberOfPages();

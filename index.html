@@ -1795,7 +1795,7 @@ window._exportOVPpiao=function(){
     var fullTitle=sn(1,chNum)+" "+ovp.cod+" - "+ovp.nome;
     tocEntries.push({level:1,text:fullTitle.substring(0,100),page:doc.getNumberOfPages()});
     doc.setFillColor(RC[0],RC[1],RC[2]);
-    var titleLines=doc.splitTextToSize(fullTitle,W-24);
+    var titleLines=doc.splitTextToSize(fullTitle,W-2*mx-8);
     var titleH=Math.max(8,titleLines.length*5+3);
     doc.rect(mx,pageY,W-20,titleH,"F");
     doc.setTextColor(255);doc.setFontSize(11);doc.setFont(undefined,"bold");
@@ -1805,8 +1805,19 @@ window._exportOVPpiao=function(){
     doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont(undefined,"bold");
     doc.text(sn(1,chNum,1)+" Descrizione",mx,pageY+4);pageY+=7;
     doc.setTextColor(0);doc.setFontSize(8);doc.setFont(undefined,"normal");
-    var descLines=doc.splitTextToSize(ovp.descrizione||ovp.nome||"",W-24);
-    doc.text(descLines,mx+2,pageY+3);pageY+=descLines.length*3.5+4;
+    var descLines=doc.splitTextToSize(ovp.descrizione||ovp.nome||"",W-2*mx-10);
+    // Paginate description: render lines in chunks that fit the page
+    var dli=0;var dlH=3.5;
+    while(dli<descLines.length){
+      var dAvail=H-pageY-14;
+      var dFit=Math.max(1,Math.floor(dAvail/dlH));
+      var dChunk=descLines.slice(dli,dli+dFit);
+      doc.text(dChunk,mx+2,pageY+3);
+      pageY+=dChunk.length*dlH+2;
+      dli+=dFit;
+      if(dli<descLines.length){doc.addPage("a4","landscape");firstPage=false;addHeader();}
+    }
+    pageY+=2;
     // Stats box - compact
     doc.setFillColor(248,245,245);doc.rect(mx,pageY,W-20,12,"F");
     doc.setDrawColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,12,"S");
@@ -1827,7 +1838,7 @@ window._exportOVPpiao=function(){
         // Indicator header — adaptive height for long names
         doc.setFontSize(8);doc.setFont(undefined,"bold");
         var indTitle="Indicatore "+(ii+1)+": "+(ind.nome||"");
-        var indTitleLines=doc.splitTextToSize(indTitle,W-26);
+        var indTitleLines=doc.splitTextToSize(indTitle,W-2*mx-8);
         var indTitleH=Math.max(7,indTitleLines.length*4.5+3);
         checkPage(indTitleH+50);
         doc.setFillColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,indTitleH,"F");
@@ -1885,23 +1896,22 @@ window._exportOVPpiao=function(){
         // ── descrCommento — paginated, never truncated ──
         if(ind.descrCommento){
           doc.setFontSize(7);doc.setFont(undefined,"italic");
-          var cmtL=doc.splitTextToSize(ind.descrCommento,W-26);
+          var cmtMaxW=W-2*mx-10;
+          var cmtL=doc.splitTextToSize(ind.descrCommento,cmtMaxW);
           var cmtLineH=3.2;var cmtPad=3;
           // Render in chunks that fit the page
           var ci2=0;
           while(ci2<cmtL.length){
-            var avail=H-pageY-12;// leave margin for footer
+            var avail=H-pageY-14;// leave margin for footer
             var fitLines=Math.max(1,Math.floor((avail-cmtPad*2)/cmtLineH));
             var chunk=cmtL.slice(ci2,ci2+fitLines);
             var chunkH=cmtPad*2+chunk.length*cmtLineH;
-            if(ci2===0||chunk.length<fitLines){
-              // First chunk or last chunk
-            }else{
-              checkPage(chunkH+5);
+            if(ci2>0&&chunkH+5>avail){
+              doc.addPage("a4","landscape");firstPage=false;addHeader();
             }
-            doc.setFillColor(248,245,245);doc.rect(mx,pageY,W-20,chunkH,"F");
-            doc.setTextColor(60);
-            doc.text(chunk,mx+3,pageY+cmtPad+2.5);
+            doc.setFillColor(248,245,245);doc.rect(mx+2,pageY,W-2*mx-4,chunkH,"F");
+            doc.setTextColor(60);doc.setFontSize(7);doc.setFont(undefined,"italic");
+            doc.text(chunk,mx+5,pageY+cmtPad+2.5);
             pageY+=chunkH+2;
             ci2+=fitLines;
             if(ci2<cmtL.length){doc.addPage("a4","landscape");firstPage=false;addHeader();}

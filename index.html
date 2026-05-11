@@ -116,7 +116,7 @@ window._proFull=function(cod){
 window._isDeletedUser = function(name){return !!window._deletedUserNames[name]};
 window._filterDeleted = function(arr){return arr.filter(function(e){return e&&e.id&&!window._deletedIds[e.id]});};
 // Sanitize: remove OVP chunks and entries without valid data from _SUBS
-window._sanitizeSubs = function(arr){return arr.filter(function(e){return e&&e.id&&e.data&&e.type&&e.id.indexOf("OVP_")!==0&&e.type!=="ovp_config"&&e.type!=="ovp_desc"&&e.type!=="ovp_ind"&&e.type!=="ovp_indicator"&&e.type!=="ovp_tab"&&e.type!=="ovp_comm"&&e.type!=="ovp_desci"&&e.type!=="ovp_form"&&e.type!=="ovp_base"&&e.type!=="ovp_t1"});};
+window._sanitizeSubs = function(arr){return arr.filter(function(e){return e&&e.id&&e.data&&e.type&&e.id.indexOf("OVP_")!==0&&e.type!=="ovp_config"&&e.type!=="ovp_desc"&&e.type!=="ovp_ind"&&e.type!=="ovp_indicator"&&e.type!=="ovp_tab"&&e.type!=="ovp_comm"&&e.type!=="ovp_desci"&&e.type!=="ovp_form"&&e.type!=="ovp_base"&&e.type!=="ovp_t1"&&e.type!=="ovp_nome"});};
 
 // ── Encode/Decode per URL (supporta UTF-8) ──
 window._b64 = function(s){return btoa(unescape(encodeURIComponent(s)))};
@@ -381,6 +381,7 @@ window._load = function(){
             var ovpF=cloudData.filter(function(e){return e&&e.type==="ovp_form"});
             var ovpB=cloudData.filter(function(e){return e&&e.type==="ovp_base"});
             var ovpG=cloudData.filter(function(e){return e&&e.type==="ovp_t1"});
+            var ovpN=cloudData.filter(function(e){return e&&e.type==="ovp_nome"});
             var jc=function(arr,pid,ii){return arr.filter(function(x){return x.parentId===pid&&(ii===undefined||x.indIdx===ii)}).sort(function(a,b){return(a.idx||0)-(b.idx||0)}).map(function(x){return x.text||""}).join("")};
             var localOvps=window._loadOVP()||[];
             var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
@@ -405,7 +406,8 @@ window._load = function(){
                       v=jc(ovpF,d.id,ii);if(v)ci.formula=v;
                       v=jc(ovpB,d.id,ii);if(v)ci.baseline=v;
                       v=jc(ovpG,d.id,ii);if(v)ci.t1=v;
-                      delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;
+                      v=jc(ovpN,d.id,ii);if(v)ci.nome=v;
+                      delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;delete ci._nNome;
                       return ci;
                     });
                   }
@@ -817,14 +819,17 @@ window._syncOVPtoCloud = function(ovps,callback){
       var rawBase=ind.baseline||"";
       var rawT1=ind.t1||"";
       // Core: only short fields inline, everything else chunked
+      var rawNome=ind.nome||"";
       var core={
-        nome:(ind.nome||"").substring(0,200),
-        fonte:(ind.fonte||"").substring(0,100),
-        t2:(ind.t2||"").substring(0,100),
+        nome:rawNome.length<=200?rawNome:rawNome.substring(0,200),
+        fonte:(ind.fonte||"").substring(0,200),
+        t2:(ind.t2||"").substring(0,200),
+        t3:(ind.t3||"").substring(0,200),
         tipo:ind.tipo||"",bes:ind.bes||"",
         chartType:ind.chartType||"",chartTitle:ind.chartTitle||"",
         xLabel:ind.xLabel||"",yLabel:ind.yLabel||"",
         showLegend:ind.showLegend,useRowLabels:ind.useRowLabels,
+        _nNome:rawNome.length>200?Math.ceil(rawNome.length/CK):0,
         _nTab:Math.ceil(rawTab.length/CK)||0,
         _nComm:Math.ceil(rawComm.length/CK)||0,
         _nDescI:Math.ceil(rawDescI.length/CK)||0,
@@ -846,10 +851,12 @@ window._syncOVPtoCloud = function(ovps,callback){
         delete core.t1;core._nT1=Math.ceil(rawT1.length/CK)||0;
         delete core.descrInd;core._nDescI=Math.ceil(rawDescI.length/CK)||0;
         delete core.descrCommento;core._nComm=Math.ceil(rawComm.length/CK)||0;
+        if(rawNome.length>200){core.nome=rawNome.substring(0,100);core._nNome=Math.ceil(rawNome.length/CK)}
         indE.data=core;mkJob(indE);
       }
       // Chunk all long fields
       var pre="OVP_"+ovp.id+"_I"+ii;
+      if(core._nNome)  splitText(rawNome,pre+"N",ovp.id,"ovp_nome",{indIdx:ii});
       if(core._nTab)   splitText(rawTab,pre+"T",ovp.id,"ovp_tab",{indIdx:ii});
       if(core._nComm)  splitText(rawComm,pre+"C",ovp.id,"ovp_comm",{indIdx:ii});
       if(core._nDescI) splitText(rawDescI,pre+"X",ovp.id,"ovp_desci",{indIdx:ii});
@@ -910,6 +917,7 @@ window._pullOVPfromCloud = function(callback){
     var forms=cloudData.filter(function(e){return e&&e.type==="ovp_form"});
     var bases=cloudData.filter(function(e){return e&&e.type==="ovp_base"});
     var t1s=cloudData.filter(function(e){return e&&e.type==="ovp_t1"});
+    var nomes=cloudData.filter(function(e){return e&&e.type==="ovp_nome"});
     if(!metas.length){if(callback)callback();return}
     var joinChunks=function(arr,pid,iIdx){
       return arr.filter(function(x){return x.parentId===pid&&(iIdx===undefined||x.indIdx===iIdx)})
@@ -945,7 +953,8 @@ window._pullOVPfromCloud = function(callback){
             v=joinChunks(forms,d.id,ii);if(v)ci.formula=v;
             v=joinChunks(bases,d.id,ii);if(v)ci.baseline=v;
             v=joinChunks(t1s,d.id,ii);if(v)ci.t1=v;
-            delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;
+            v=joinChunks(nomes,d.id,ii);if(v)ci.nome=v;
+            delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;delete ci._nNome;
             return ci;
           });
           // NO "keep local if longer" — cloud wins completely

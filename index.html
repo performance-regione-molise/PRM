@@ -1732,7 +1732,7 @@ window._exportOVPpiao=function(){
     try{
       if(!window.Chart)return null;
       var hasTabData=!!(tbl&&tbl.headers&&tbl.rows&&tbl.rows.length);
-      var cvsW=hasTabData?600:350;var cvsH=hasTabData?360:240;
+      var cvsW=hasTabData?600:350;var cvsH=hasTabData?380:250;
       var cvs=document.createElement("canvas");cvs.width=cvsW;cvs.height=cvsH;
       var labels=[];var datasets=[];
       if(hasTabData){
@@ -1752,11 +1752,16 @@ window._exportOVPpiao=function(){
         }
       }else{
         labels=["Baseline","Target"];
-        datasets=[{label:ind.nome||"",values:[parseFloat(ind.baseline)||0,parseFloat(ind.t1)||0]}];
+        datasets=[{label:(ind.nome||"").substring(0,60),values:[parseFloat(ind.baseline)||0,parseFloat(ind.t1)||0]}];
       }
       if(!labels.length||!datasets.length)return null;
       var type=(ind.chartType==="histogram"||ind.chartType==="stackedBar")?"bar":ind.chartType||"bar";
       var stacked=ind.chartType==="stackedBar";
+      // Split long chart title into multiple lines (~70 chars per line)
+      var titleText=ind.chartTitle||"";
+      if(titleText.length>70){var tWords=titleText.split(" ");var tLines=[];var tCur="";tWords.forEach(function(w){if((tCur+" "+w).length>70&&tCur){tLines.push(tCur.trim());tCur=w}else{tCur+=" "+w}});if(tCur)tLines.push(tCur.trim());titleText=tLines}
+      // Hide legend for simple baseline/target charts (1 dataset, no tabData)
+      var showLegend=hasTabData?(ind.showLegend!==false):false;
       var bgPlugin={id:"bgWhite",beforeDraw:function(ch){var c=ch.ctx;c.save();c.fillStyle="#ffffff";c.fillRect(0,0,ch.width,ch.height);c.restore()}};
       var chart=new window.Chart(cvs,{type:type,plugins:[bgPlugin],data:{labels:labels,datasets:datasets.map(function(ds,i){
         var c=ds.color||["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#1abc9c","#f39c12"][i%8];
@@ -1764,7 +1769,7 @@ window._exportOVPpiao=function(){
           backgroundColor:type==="line"?"rgba("+(i===0?"0,51,102":i===1?"0,102,204":i===2?"0,135,88":"217,54,79")+",0.1)":(type==="pie"?["#003366","#0066cc","#008758","#d9364f","#8e44ad","#e67e22","#1abc9c","#f39c12"]:c),
           borderColor:c,borderWidth:type==="line"?2:1,tension:0.3,fill:type==="line",
           pointRadius:type==="line"?4:0,pointBackgroundColor:c}
-      })},options:{responsive:false,animation:false,devicePixelRatio:1.5,layout:{padding:8},plugins:{title:{display:!!ind.chartTitle,text:ind.chartTitle||"",font:{size:14,weight:"bold"},color:"#003366",padding:10},legend:{display:ind.showLegend!==false,position:"bottom",labels:{font:{size:11},padding:10,usePointStyle:true}}},scales:type==="pie"?{}:{y:{beginAtZero:type!=="line",stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:10},padding:4},grid:{color:"rgba(0,0,0,0.08)"}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||"",font:{size:11,weight:"bold"}},ticks:{font:{size:8},maxRotation:45,padding:4},grid:{display:false}}}}});
+      })},options:{responsive:false,animation:false,devicePixelRatio:1.5,layout:{padding:8},plugins:{title:{display:!!ind.chartTitle,text:titleText,font:{size:11,weight:"bold"},color:"#003366",padding:{top:4,bottom:6}},legend:{display:showLegend,position:"bottom",labels:{font:{size:9},padding:8,usePointStyle:true,boxWidth:12}}},scales:type==="pie"?{}:{y:{beginAtZero:type!=="line",stacked:stacked,title:{display:!!ind.yLabel,text:ind.yLabel||"",font:{size:10,weight:"bold"}},ticks:{font:{size:9},padding:3},grid:{color:"rgba(0,0,0,0.08)"}},x:{stacked:stacked,title:{display:!!ind.xLabel,text:ind.xLabel||"",font:{size:10,weight:"bold"}},ticks:{font:{size:8},maxRotation:45,padding:3},grid:{display:false}}}}});
       var img=cvs.toDataURL("image/jpeg",0.85);chart.destroy();return img;
     }catch(e){console.warn("Chart error:",e);return null}
   };
@@ -1812,7 +1817,7 @@ window._exportOVPpiao=function(){
     // ═══ 1.chNum OVP PAGE ═══
     doc.addPage("a4","landscape");firstPage=false;addHeader();
     var fullTitle=sn(1,chNum)+" "+ovp.cod+" - "+ovp.nome;
-    tocEntries.push({level:1,text:fullTitle.substring(0,100),page:doc.getNumberOfPages()});
+    tocEntries.push({level:1,text:fullTitle,page:doc.getNumberOfPages()});
     doc.setFillColor(RC[0],RC[1],RC[2]);
     var titleLines=doc.splitTextToSize(fullTitle,W-2*mx-8);
     var titleH=Math.max(8,titleLines.length*5+3);

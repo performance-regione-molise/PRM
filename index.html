@@ -374,7 +374,10 @@ window._load = function(){
           var ovpM=cloudData.filter(function(e){return e&&e.type==="ovp_config"});
           if(ovpM.length>0){
             var ovpD=cloudData.filter(function(e){return e&&e.type==="ovp_desc"});
-            var ovpI=cloudData.filter(function(e){return e&&(e.type==="ovp_ind"||e.type==="ovp_indicator")});
+            var ovpI_raw=cloudData.filter(function(e){return e&&(e.type==="ovp_ind"||e.type==="ovp_indicator")});
+            // Deduplicate: if both ovp_ind and ovp_indicator exist for same parentId+idx, keep ovp_ind
+            var ovpI_map={};ovpI_raw.forEach(function(e){var k=(e.parentId||"")+"_"+(e.idx!=null?e.idx:"?");if(!ovpI_map[k]||e.type==="ovp_ind")ovpI_map[k]=e});
+            var ovpI=Object.keys(ovpI_map).map(function(k){return ovpI_map[k]});
             var ovpT=cloudData.filter(function(e){return e&&e.type==="ovp_tab"});
             var ovpC=cloudData.filter(function(e){return e&&e.type==="ovp_comm"});
             var ovpX=cloudData.filter(function(e){return e&&e.type==="ovp_desci"});
@@ -872,6 +875,10 @@ window._syncOVPtoCloud = function(ovps,callback){
     for(var oi=nInd;oi<nInd+20;oi++){
       jobs.push({id:"DEL_OVP_"+ovp.id+"_I"+oi,b64:"",isDel:true,delId:"OVP_"+ovp.id+"_I"+oi});
     }
+    // Also delete old-format ovp_indicator entries (IND0, IND1, ...)
+    for(var oi2=0;oi2<nInd+20;oi2++){
+      jobs.push({id:"DEL_OVP_"+ovp.id+"_IND"+oi2,b64:"",isDel:true,delId:"OVP_"+ovp.id+"_IND"+oi2});
+    }
   });
   // Execute sequentially with delay and retry
   var done=0;var errors=0;var total=jobs.length;
@@ -910,7 +917,10 @@ window._pullOVPfromCloud = function(callback){
     if(!cloudData||!Array.isArray(cloudData)){if(callback)callback();return}
     var metas=cloudData.filter(function(e){return e&&e.type==="ovp_config"});
     var descs=cloudData.filter(function(e){return e&&e.type==="ovp_desc"});
-    var inds=cloudData.filter(function(e){return e&&(e.type==="ovp_ind"||e.type==="ovp_indicator")});
+    var inds_raw=cloudData.filter(function(e){return e&&(e.type==="ovp_ind"||e.type==="ovp_indicator")});
+    // Deduplicate: if both ovp_ind and ovp_indicator exist for same parentId+idx, keep ovp_ind
+    var inds_map={};inds_raw.forEach(function(e){var k=(e.parentId||"")+"_"+(e.idx!=null?e.idx:"?");if(!inds_map[k]||e.type==="ovp_ind")inds_map[k]=e});
+    var inds=Object.keys(inds_map).map(function(k){return inds_map[k]});
     var tabs=cloudData.filter(function(e){return e&&e.type==="ovp_tab"});
     var comms=cloudData.filter(function(e){return e&&e.type==="ovp_comm"});
     var descis=cloudData.filter(function(e){return e&&e.type==="ovp_desci"});
@@ -1868,9 +1878,10 @@ window._exportOVPpiao=function(){
         if(ind.descrInd){
           tb1.push([{content:"Descrizione indicatore: "+(ind.descrInd||""),colSpan:7,styles:{fontStyle:"italic",fontSize:6.5}}]);
         }
-        doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:tb1,theme:"grid",
+        doc.autoTable({startY:pageY,margin:{left:mx,right:mx},body:tb1,theme:"grid",
+          tableWidth:W-2*mx,
           styles:{fontSize:7,cellPadding:2,lineColor:[180,180,180],lineWidth:0.2,overflow:"linebreak"},
-          columnStyles:{0:{cellWidth:42},1:{cellWidth:50},2:{cellWidth:30},3:{cellWidth:45},4:{cellWidth:45},5:{cellWidth:28},6:{cellWidth:22}}
+          columnStyles:{0:{cellWidth:46},1:{cellWidth:53},2:{cellWidth:32},3:{cellWidth:48},4:{cellWidth:46},5:{cellWidth:29},6:{cellWidth:23}}
         });
         pageY=doc.lastAutoTable.finalY+4;
         // ── Chart section ──
@@ -1908,16 +1919,19 @@ window._exportOVPpiao=function(){
           var cmtMaxW=W-2*mx-10;
           var cmtL=doc.splitTextToSize(ind.descrCommento,cmtMaxW);
           var cmtLineH=3.2;var cmtPad=3;
+          var minBlockH=cmtPad*2+cmtLineH+2;// minimum space needed for 1 line
           // Render in chunks that fit the page
           var ci2=0;
           while(ci2<cmtL.length){
-            var avail=H-pageY-14;// leave margin for footer
+            var avail=H-pageY-14;
+            // If not enough space for even 1 line, go to next page first
+            if(avail<minBlockH){
+              doc.addPage("a4","landscape");firstPage=false;addHeader();
+              avail=H-pageY-14;
+            }
             var fitLines=Math.max(1,Math.floor((avail-cmtPad*2)/cmtLineH));
             var chunk=cmtL.slice(ci2,ci2+fitLines);
             var chunkH=cmtPad*2+chunk.length*cmtLineH;
-            if(ci2>0&&chunkH+5>avail){
-              doc.addPage("a4","landscape");firstPage=false;addHeader();
-            }
             doc.setFillColor(248,245,245);doc.rect(mx+2,pageY,W-2*mx-4,chunkH,"F");
             doc.setTextColor(60);doc.setFontSize(7);doc.setFont(undefined,"italic");
             doc.text(chunk,mx+5,pageY+cmtPad+2.5);
@@ -2097,26 +2111,28 @@ window._exportOVPpiao=function(){
     doc.setFontSize(e.level===1?9:8);doc.setFont(undefined,e.level===1?"bold":"normal");
     if(e.level===1){doc.setTextColor(RC[0],RC[1],RC[2])}else{doc.setTextColor(80,80,80)}
     var indent=e.level===1?0:8;
-    var tocText=e.text.substring(0,100);
     var pageRef="pag. "+e.page;
-    // Draw text
-    doc.text(tocText,mx+indent,ty+3);
-    doc.text(pageRef,W-mx-2,ty+3,{align:"right"});
-    // Dots between text and page number
-    var textW=doc.getTextWidth(tocText);
     var pageW=doc.getTextWidth(pageRef);
-    var dotStart=mx+indent+textW+2;
+    var maxTextW=W-2*mx-indent-pageW-15;
+    var tocLines=doc.splitTextToSize(e.text,maxTextW);
+    // Draw text (possibly multi-line)
+    doc.text(tocLines,mx+indent,ty+3);
+    doc.text(pageRef,W-mx-2,ty+3,{align:"right"});
+    // Dots between first line of text and page number
+    var firstLineW=doc.getTextWidth(tocLines[0]);
+    var dotStart=mx+indent+firstLineW+2;
     var dotEnd=W-mx-2-pageW-2;
     if(dotEnd>dotStart+8){
-      doc.setTextColor(180,180,180);doc.setFontSize(6);
-      var dots="";for(var di=0;di<Math.floor((dotEnd-dotStart)/1.5);di++)dots+=".";
+      doc.setTextColor(180,180,180);doc.setFontSize(e.level===1?9:8);
+      var dots="";for(var di=0;di<Math.floor((dotEnd-dotStart)/1.8);di++)dots+=".";
       doc.text(dots,dotStart,ty+3);
       if(e.level===1){doc.setTextColor(RC[0],RC[1],RC[2])}else{doc.setTextColor(80,80,80)}
     }
-    // Clickable link area — jumps to the target page
-    var linkH=e.level===1?5.5:4;
-    try{doc.link(mx+indent,ty-1,W-2*mx,linkH,{pageNumber:e.page})}catch(ex){}
-    ty+=linkH;
+    // Clickable link area
+    var lineH=e.level===1?4:3.2;
+    var blockH=Math.max(e.level===1?5.5:4,tocLines.length*lineH+1);
+    try{doc.link(mx+indent,ty-1,W-2*mx,blockH,{pageNumber:e.page})}catch(ex){}
+    ty+=blockH;
   });
   // ═══ FOOTERS on all pages ═══
   var tp=doc.getNumberOfPages();

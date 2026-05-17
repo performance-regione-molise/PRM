@@ -116,7 +116,7 @@ window._proFull=function(cod){
 window._isDeletedUser = function(name){return !!window._deletedUserNames[name]};
 window._filterDeleted = function(arr){return arr.filter(function(e){return e&&e.id&&!window._deletedIds[e.id]});};
 // Sanitize: remove OVP chunks and entries without valid data from _SUBS
-window._sanitizeSubs = function(arr){return arr.filter(function(e){return e&&e.id&&e.data&&e.type&&e.id.indexOf("OVP_")!==0&&e.type!=="ovp_config"&&e.type!=="ovp_desc"&&e.type!=="ovp_ind"&&e.type!=="ovp_indicator"&&e.type!=="ovp_tab"&&e.type!=="ovp_comm"&&e.type!=="ovp_desci"&&e.type!=="ovp_form"&&e.type!=="ovp_base"&&e.type!=="ovp_t1"&&e.type!=="ovp_nome"});};
+window._sanitizeSubs = function(arr){return arr.filter(function(e){return e&&e.id&&e.data&&e.type&&e.id.indexOf("OVP_")!==0&&e.type!=="ovp_config"&&e.type!=="ovp_desc"&&e.type!=="ovp_ind"&&e.type!=="ovp_indicator"&&e.type!=="ovp_tab"&&e.type!=="ovp_comm"&&e.type!=="ovp_desci"&&e.type!=="ovp_form"&&e.type!=="ovp_base"&&e.type!=="ovp_t1"&&e.type!=="ovp_nome"&&e.type!=="ovp_ovpname"});};
 
 // ── Encode/Decode per URL (supporta UTF-8) ──
 window._b64 = function(s){return btoa(unescape(encodeURIComponent(s)))};
@@ -385,6 +385,7 @@ window._load = function(){
             var ovpB=cloudData.filter(function(e){return e&&e.type==="ovp_base"});
             var ovpG=cloudData.filter(function(e){return e&&e.type==="ovp_t1"});
             var ovpN=cloudData.filter(function(e){return e&&e.type==="ovp_nome"});
+            var ovpON=cloudData.filter(function(e){return e&&e.type==="ovp_ovpname"});
             var jc=function(arr,pid,ii){return arr.filter(function(x){return x.parentId===pid&&(ii===undefined||x.indIdx===ii)}).sort(function(a,b){return(a.idx||0)-(b.idx||0)}).map(function(x){return x.text||""}).join("")};
             var localOvps=window._loadOVP()||[];
             var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
@@ -396,6 +397,8 @@ window._load = function(){
                 var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;
                 // Description: cloud wins
                 if(d._split||!mc.descrizione){var cd=jc(ovpD,d.id);if(cd)mc.descrizione=cd}
+                // OVP nome: reassemble from chunks if available
+                if(d._nOvpNome){var cn=jc(ovpON,d.id);if(cn)mc.nome=cn}
                 // Indicators: cloud wins, use _nInd to limit
                 if(d._split||!mc.indicatori||!mc.indicatori.length){
                   var mi=ovpI.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
@@ -415,7 +418,7 @@ window._load = function(){
                     });
                   }
                 }
-                delete mc._split;delete mc._hasIndSplit;delete mc._nInd;delete mc._nDesc;
+                delete mc._split;delete mc._hasIndSplit;delete mc._nInd;delete mc._nDesc;delete mc._nOvpNome;
                 ovpById[d.id]=mc;ovpChanged=true;
               }
             });
@@ -809,8 +812,11 @@ window._syncOVPtoCloud = function(ovps,callback){
     // ── Split mode for large OVPs ──
     var nInd=(ovp.indicatori||[]).length;
     var descLen=(ovp.descrizione||"").length;
-    var meta={id:ovp.id,cod:ovp.cod,nome:(ovp.nome||"").substring(0,200),missioni:ovp.missioni||[],_split:true,_nInd:nInd,_nDesc:Math.ceil(descLen/CK)||0};
+    var ovpNomeRaw=ovp.nome||"";
+    var meta={id:ovp.id,cod:ovp.cod,nome:ovpNomeRaw.substring(0,500),missioni:ovp.missioni||[],_split:true,_nInd:nInd,_nDesc:Math.ceil(descLen/CK)||0,_nOvpNome:ovpNomeRaw.length>500?Math.ceil(ovpNomeRaw.length/CK):0};
     mkJob({id:"OVP_"+ovp.id,type:"ovp_config",timestamp:ts,data:meta});
+    // OVP nome chunks (if >500 chars)
+    if(ovpNomeRaw.length>500)splitText(ovpNomeRaw,"OVP_"+ovp.id+"_ON",ovp.id,"ovp_ovpname");
     // Description chunks (unlimited length)
     splitText(ovp.descrizione||"","OVP_"+ovp.id+"_D",ovp.id,"ovp_desc");
     // Each indicator
@@ -928,6 +934,7 @@ window._pullOVPfromCloud = function(callback){
     var bases=cloudData.filter(function(e){return e&&e.type==="ovp_base"});
     var t1s=cloudData.filter(function(e){return e&&e.type==="ovp_t1"});
     var nomes=cloudData.filter(function(e){return e&&e.type==="ovp_nome"});
+    var ovpnomes=cloudData.filter(function(e){return e&&e.type==="ovp_ovpname"});
     if(!metas.length){if(callback)callback();return}
     var joinChunks=function(arr,pid,iIdx){
       return arr.filter(function(x){return x.parentId===pid&&(iIdx===undefined||x.indIdx===iIdx)})
@@ -946,6 +953,8 @@ window._pullOVPfromCloud = function(callback){
         var cd=joinChunks(descs,d.id);
         if(cd)m.descrizione=cd;
       }
+      // OVP nome: reassemble from chunks if available
+      if(d._nOvpNome){var cn=joinChunks(ovpnomes,d.id);if(cn)m.nome=cn}
       // Reassemble indicators from chunks (cloud wins, use _nInd to limit)
       if(d._split||!m.indicatori||!m.indicatori.length){
         var myInds=inds.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
@@ -971,7 +980,7 @@ window._pullOVPfromCloud = function(callback){
         }
         // If no cloud indicators found AND no _nInd set, keep nothing (cloud said 0)
       }
-      delete m._split;delete m._hasIndSplit;delete m._nInd;delete m._nDesc;
+      delete m._split;delete m._hasIndSplit;delete m._nInd;delete m._nDesc;delete m._nOvpNome;
       ovpById[d.id]=m;changed=true;
     });
     if(changed){

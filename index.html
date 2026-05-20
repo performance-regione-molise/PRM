@@ -396,14 +396,14 @@ window._load = function(){
               if(!ovpById[d.id]||ct>lt){
                 var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;
                 // Description: cloud wins
-                if(d._split||!mc.descrizione){var cd=jc(ovpD,d.id);if(cd)mc.descrizione=cd}
+                // Description: always use cloud chunks if available
+                var cd=jc(ovpD,d.id);if(cd)mc.descrizione=cd;
                 // OVP nome: reassemble from chunks if available
                 if(d._nOvpNome){var cn=jc(ovpON,d.id);if(cn)mc.nome=cn}
-                // Indicators: cloud wins, use _nInd to limit
-                if(d._split||!mc.indicatori||!mc.indicatori.length){
-                  var mi=ovpI.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
-                  var nInd=d._nInd||mi.length;if(nInd>0)mi=mi.slice(0,nInd);
-                  if(mi.length){
+                // Indicators: ALWAYS use cloud ovp_ind entries if available
+                var mi=ovpI.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
+                var nInd=d._nInd||mi.length;if(nInd>0)mi=mi.slice(0,nInd);
+                if(mi.length){
                     mc.indicatori=mi.map(function(ie){
                       var ci=JSON.parse(JSON.stringify(ie.data||ie));var ii=ie.idx;
                       var v;v=jc(ovpT,d.id,ii);if(v)ci.tabData=v;
@@ -416,7 +416,6 @@ window._load = function(){
                       delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;delete ci._nNome;
                       return ci;
                     });
-                  }
                 }
                 delete mc._split;delete mc._hasIndSplit;delete mc._nInd;delete mc._nDesc;delete mc._nOvpNome;
                 ovpById[d.id]=mc;ovpChanged=true;
@@ -948,21 +947,16 @@ window._pullOVPfromCloud = function(callback){
       var d=e.data||e;if(!d||!d.id)return;
       // Cloud ALWAYS wins on explicit pull — no timestamp check
       var m=JSON.parse(JSON.stringify(d));m._ts=e.timestamp||"";
-      // Reassemble description from chunks (cloud wins)
-      if(d._split||!m.descrizione){
-        var cd=joinChunks(descs,d.id);
-        if(cd)m.descrizione=cd;
-      }
+      // Description: always use cloud chunks if available
+      var cd=joinChunks(descs,d.id);if(cd)m.descrizione=cd;
       // OVP nome: reassemble from chunks if available
       if(d._nOvpNome){var cn=joinChunks(ovpnomes,d.id);if(cn)m.nome=cn}
-      // Reassemble indicators from chunks (cloud wins, use _nInd to limit)
-      if(d._split||!m.indicatori||!m.indicatori.length){
-        var myInds=inds.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
-        // Use _nInd from meta to limit — old chunks may still exist in cloud
-        var nInd=d._nInd||myInds.length;
-        if(nInd>0)myInds=myInds.slice(0,nInd);
-        if(myInds.length){
-          m.indicatori=myInds.map(function(ie){
+      // Reassemble indicators: ALWAYS use cloud ovp_ind entries if available
+      var myInds=inds.filter(function(x){return x.parentId===d.id}).sort(function(a,b){return(a.idx||0)-(b.idx||0)});
+      var nInd=d._nInd||myInds.length;
+      if(nInd>0)myInds=myInds.slice(0,nInd);
+      if(myInds.length){
+        m.indicatori=myInds.map(function(ie){
             var ci=JSON.parse(JSON.stringify(ie.data||ie));
             var ii=ie.idx;
             var v;
@@ -975,10 +969,7 @@ window._pullOVPfromCloud = function(callback){
             v=joinChunks(nomes,d.id,ii);if(v)ci.nome=v;
             delete ci._nTab;delete ci._nComm;delete ci._nDescI;delete ci._nForm;delete ci._nBase;delete ci._nT1;delete ci._nNome;
             return ci;
-          });
-          // NO "keep local if longer" — cloud wins completely
-        }
-        // If no cloud indicators found AND no _nInd set, keep nothing (cloud said 0)
+        });
       }
       delete m._split;delete m._hasIndSplit;delete m._nInd;delete m._nDesc;delete m._nOvpNome;
       ovpById[d.id]=m;changed=true;

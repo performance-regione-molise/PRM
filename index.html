@@ -45,6 +45,7 @@ button{font-family:inherit}
 // Ogni operazione (add/update/delete) via GET individuale
 // ════════════════════════════════════════════════
 window.API_URL = "https://script.google.com/macros/s/AKfycbybSKX7cyn4eQfOHkQc6MNt7TlGpk4buQEO1XPuY17EiC5EzH-WitygEcJWqpjeimSDxw/exec"; // <── INCOLLA QUI IL TUO URL
+window.PRM_VERSION = "2.1-tabfix-20260521";console.log("[PRM] Versione: "+window.PRM_VERSION);
 
 window.SK = "ppo_molise";
 window._SUBS = [];
@@ -387,15 +388,17 @@ window._load = function(){
             var ovpN=cloudData.filter(function(e){return e&&e.type==="ovp_nome"});
             var ovpON=cloudData.filter(function(e){return e&&e.type==="ovp_ovpname"});
             var jc=function(arr,pid,ii){return arr.filter(function(x){return x.parentId===pid&&(ii===undefined||x.indIdx===ii)}).sort(function(a,b){return(a.idx||0)-(b.idx||0)}).map(function(x){return x.text||""}).join("")};
+            console.log("[OVP] Chunks nel cloud: ovp_tab="+ovpT.length+", ovp_comm="+ovpC.length+", ovp_ind="+ovpI.length);
             var localOvps=window._loadOVP()||[];
             var ovpById={};localOvps.forEach(function(o){ovpById[o.id]=o});
             var ovpChanged=false;
             ovpM.forEach(function(e){
               var d=e.data||e;if(!d||!d.id)return;
               var ct=e.timestamp||"";var lt=(ovpById[d.id]||{})._ts||"";
-              if(!ovpById[d.id]||ct>lt){
-                var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;
-                // Description: cloud wins
+              var localV=(ovpById[d.id]||{})._v||0;
+              // ALWAYS reassemble from cloud if: new OVP, newer timestamp, or local data is stale (old version)
+              if(!ovpById[d.id]||ct>=lt||localV<2){
+                var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;mc._v=2;
                 // Description: always use cloud chunks if available
                 var cd=jc(ovpD,d.id);if(cd)mc.descrizione=cd;
                 // OVP nome: reassemble from chunks if available
@@ -423,9 +426,17 @@ window._load = function(){
             });
             if(ovpChanged){
               var arr=Object.keys(ovpById).map(function(k){return ovpById[k]});
+              // Diagnostica: verifica tabData dopo reassembly
+              arr.forEach(function(o){
+                var missing=[];
+                (o.indicatori||[]).forEach(function(ind,i){
+                  if(!ind.tabData)missing.push(i);
+                });
+                console.log("[OVP] "+o.id+": "+((o.indicatori||[]).length)+" indicatori, tabData mancante per idx: "+(missing.length?missing.join(","):"nessuno ✓"));
+              });
               try{localStorage.setItem("ppo_ovp",JSON.stringify(arr))}catch(e){}
               window.dispatchEvent(new Event("ovpChanged"));
-              console.log("[OVP] Caricati "+arr.length+" OVP dal cloud (startup)");
+              console.log("[OVP] Caricati "+arr.length+" OVP dal cloud (startup, v2.1-tabfix)");
             }
           }
         }else if(local.length>0){
@@ -946,7 +957,7 @@ window._pullOVPfromCloud = function(callback){
     metas.forEach(function(e){
       var d=e.data||e;if(!d||!d.id)return;
       // Cloud ALWAYS wins on explicit pull — no timestamp check
-      var m=JSON.parse(JSON.stringify(d));m._ts=e.timestamp||"";
+      var m=JSON.parse(JSON.stringify(d));m._ts=e.timestamp||"";m._v=2;
       // Description: always use cloud chunks if available
       var cd=joinChunks(descs,d.id);if(cd)m.descrizione=cd;
       // OVP nome: reassemble from chunks if available
@@ -976,9 +987,17 @@ window._pullOVPfromCloud = function(callback){
     });
     if(changed){
       var arr=Object.keys(ovpById).map(function(k){return ovpById[k]});
+      // Diagnostica: verifica tabData dopo reassembly
+      arr.forEach(function(o){
+        var missing=[];
+        (o.indicatori||[]).forEach(function(ind,i){
+          if(!ind.tabData)missing.push(i);
+        });
+        console.log("[OVP-PULL] "+o.id+": "+((o.indicatori||[]).length)+" indicatori, tabData mancante per idx: "+(missing.length?missing.join(","):"nessuno ✓"));
+      });
       try{localStorage.setItem("ppo_ovp",JSON.stringify(arr))}catch(e){}
       window.dispatchEvent(new Event("ovpChanged"));
-      console.log("[OVP] Caricati "+arr.length+" OVP dal cloud (cloud vince)");
+      console.log("[OVP-PULL] Caricati "+arr.length+" OVP dal cloud (cloud vince, v2.1-tabfix)");
     }
     if(callback)callback();
   });

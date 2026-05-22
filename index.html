@@ -45,7 +45,7 @@ button{font-family:inherit}
 // Ogni operazione (add/update/delete) via GET individuale
 // ════════════════════════════════════════════════
 window.API_URL = "https://script.google.com/macros/s/AKfycbybSKX7cyn4eQfOHkQc6MNt7TlGpk4buQEO1XPuY17EiC5EzH-WitygEcJWqpjeimSDxw/exec"; // <── INCOLLA QUI IL TUO URL
-window.PRM_VERSION = "2.1-tabfix-20260521";console.log("[PRM] Versione: "+window.PRM_VERSION);
+window.PRM_VERSION = "2.2-pdfpull-20260522";console.log("[PRM] Versione: "+window.PRM_VERSION);
 
 window.SK = "ppo_molise";
 window._SUBS = [];
@@ -1691,7 +1691,21 @@ window._exportOVPexcel=function(){
 
 // Esporta OVP PDF
 window._exportOVPpdf=function(){
+  // Force fresh pull from cloud before generating PDF
+  if(window._pullOVPfromCloud && window.API_URL){
+    console.log("[PDF] Pulling fresh OVP data from cloud before PDF generation...");
+    window._pullOVPfromCloud(function(){
+      console.log("[PDF] Pull complete, generating PDF now");
+      window._doExportOVPpdf();
+    });
+  } else {
+    window._doExportOVPpdf();
+  }
+};
+window._doExportOVPpdf=function(){
   var ovps=window._loadOVP()||[];var subs=window._SUBS;
+  // Diagnostic: verify tabData presence before PDF generation
+  ovps.forEach(function(o){var missing=[];(o.indicatori||[]).forEach(function(ind,i){if(!ind.tabData)missing.push(i)});if(missing.length)console.warn("[PDF] "+o.id+": tabData MANCANTE per idx "+missing.join(","))});
   var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
   var W=297,H=210,mx=8;
   // Header

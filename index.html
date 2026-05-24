@@ -45,7 +45,7 @@ button{font-family:inherit}
 // Ogni operazione (add/update/delete) via GET individuale
 // ════════════════════════════════════════════════
 window.API_URL = "https://script.google.com/macros/s/AKfycbybSKX7cyn4eQfOHkQc6MNt7TlGpk4buQEO1XPuY17EiC5EzH-WitygEcJWqpjeimSDxw/exec"; // <── INCOLLA QUI IL TUO URL
-window.PRM_VERSION = "2.5-forcemigrate-20260524";console.log("[PRM] Versione: "+window.PRM_VERSION);
+window.PRM_VERSION = "2.6-tabparse-20260524";console.log("[PRM] Versione: "+window.PRM_VERSION);
 // PDF text sanitizer: replace Unicode chars unsupported by jsPDF default font
 window._ps=function(t){if(!t)return t||"";return t.replace(/₀/g,"0").replace(/₁/g,"1").replace(/₂/g,"2").replace(/₃/g,"3").replace(/₄/g,"4").replace(/₅/g,"5").replace(/₆/g,"6").replace(/₇/g,"7").replace(/₈/g,"8").replace(/₉/g,"9").replace(/⁰/g,"0").replace(/¹/g,"1").replace(/²/g,"2").replace(/³/g,"3").replace(/⁴/g,"4").replace(/⁵/g,"5").replace(/⁶/g,"6").replace(/⁷/g,"7").replace(/⁸/g,"8").replace(/⁹/g,"9").replace(/–/g,"-").replace(/—/g,"-").replace(/\u2018/g,"'").replace(/\u2019/g,"'").replace(/\u201C/g,'"').replace(/\u201D/g,'"').replace(/…/g,"...").replace(/≤/g,"<=").replace(/≥/g,">=").replace(/≠/g,"!=").replace(/±/g,"+/-").replace(/\u00A0/g," ")};
 
@@ -399,8 +399,8 @@ window._load = function(){
               var ct=e.timestamp||"";var lt=(ovpById[d.id]||{})._ts||"";
               var localV=(ovpById[d.id]||{})._v||0;
               // Pull from cloud ONLY if: new OVP, cloud is strictly newer, or one-time migration (old data without _v)
-              if(!ovpById[d.id]||ct>lt||localV<3){
-                var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;mc._v=3;
+              if(!ovpById[d.id]||ct>lt||localV<4){
+                var mc=JSON.parse(JSON.stringify(d));mc._ts=ct;mc._v=4;
                 // Description: always use cloud chunks if available
                 var cd=jc(ovpD,d.id);if(cd)mc.descrizione=cd;
                 // OVP nome: reassemble from chunks if available
@@ -413,7 +413,7 @@ window._load = function(){
                 if(mi.length){
                     mc.indicatori=mi.map(function(ie){
                       var ci=JSON.parse(JSON.stringify(ie.data||ie));var ii=ie.idx;
-                      var v;v=jc(ovpT,d.id,ii);if(v)ci.tabData=v;
+                      var v;v=jc(ovpT,d.id,ii);if(v){try{ci.tabData=JSON.parse(v)}catch(ee){ci.tabData=v}}
                       v=jc(ovpC,d.id,ii);if(v)ci.descrCommento=v;
                       v=jc(ovpX,d.id,ii);if(v)ci.descrInd=v;
                       v=jc(ovpF,d.id,ii);if(v)ci.formula=v;
@@ -432,11 +432,12 @@ window._load = function(){
               var arr=Object.keys(ovpById).map(function(k){return ovpById[k]});
               // Diagnostica: verifica tabData dopo reassembly
               arr.forEach(function(o){
-                var missing=[];
+                var missing=[];var types=[];
                 (o.indicatori||[]).forEach(function(ind,i){
-                  if(!ind.tabData)missing.push(i);
+                  if(!ind.tabData){missing.push(i)}
+                  else{types.push("I"+i+":"+(typeof ind.tabData))}
                 });
-                console.log("[OVP] "+o.id+": "+((o.indicatori||[]).length)+" indicatori, tabData mancante per idx: "+(missing.length?missing.join(","):"nessuno ✓"));
+                console.log("[OVP] "+o.id+": "+((o.indicatori||[]).length)+" indicatori, tabData mancante: "+(missing.length?missing.join(","):"nessuno ✓")+(types.length?" | tipi: "+types.join(","):""));
               });
               try{localStorage.setItem("ppo_ovp",JSON.stringify(arr))}catch(e){}
               window.dispatchEvent(new Event("ovpChanged"));
@@ -961,7 +962,7 @@ window._pullOVPfromCloud = function(callback){
     metas.forEach(function(e){
       var d=e.data||e;if(!d||!d.id)return;
       // Cloud ALWAYS wins on explicit pull — no timestamp check
-      var m=JSON.parse(JSON.stringify(d));m._ts=e.timestamp||"";m._v=3;
+      var m=JSON.parse(JSON.stringify(d));m._ts=e.timestamp||"";m._v=4;
       // Description: always use cloud chunks if available
       var cd=joinChunks(descs,d.id);if(cd)m.descrizione=cd;
       // OVP nome: reassemble from chunks if available
@@ -977,7 +978,7 @@ window._pullOVPfromCloud = function(callback){
             var ci=JSON.parse(JSON.stringify(ie.data||ie));
             var ii=ie.idx;
             var v;
-            v=joinChunks(tabs,d.id,ii);if(v)ci.tabData=v;
+            v=joinChunks(tabs,d.id,ii);if(v){try{ci.tabData=JSON.parse(v)}catch(ee){ci.tabData=v}}
             v=joinChunks(comms,d.id,ii);if(v)ci.descrCommento=v;
             v=joinChunks(descis,d.id,ii);if(v)ci.descrInd=v;
             v=joinChunks(forms,d.id,ii);if(v)ci.formula=v;

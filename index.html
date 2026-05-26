@@ -903,44 +903,59 @@ window._syncOVPtoCloud = function(ovps,callback){
   // Only delete main indicator entries — sub-chunks are harmless without parent
   ovps.forEach(function(ovp){
     var nInd=(ovp.indicatori||[]).length;
-    for(var oi=nInd;oi<nInd+20;oi++){
+    for(var oi=nInd;oi<nInd+5;oi++){
       jobs.push({id:"DEL_OVP_"+ovp.id+"_I"+oi,b64:"",isDel:true,delId:"OVP_"+ovp.id+"_I"+oi});
     }
     // Also delete old-format ovp_indicator entries (IND0, IND1, ...)
-    for(var oi2=0;oi2<nInd+20;oi2++){
+    for(var oi2=0;oi2<nInd+5;oi2++){
       jobs.push({id:"DEL_OVP_"+ovp.id+"_IND"+oi2,b64:"",isDel:true,delId:"OVP_"+ovp.id+"_IND"+oi2});
     }
   });
-  // Execute sequentially with delay and retry
-  var done=0;var errors=0;var total=jobs.length;
+  // Separate upsert jobs from delete jobs — run deletes AFTER upserts
+  var upsertJobs=jobs.filter(function(j){return !j.isDel});
+  var deleteJobs=jobs.filter(function(j){return j.isDel});
+  // Execute with parallelism (PARALLEL_N concurrent requests)
+  var PARALLEL_N=5;
+  var allJobs=upsertJobs.concat(deleteJobs);
+  var done=0;var errors=0;var total=allJobs.length;
   if(!total){window._ovpSyncing=false;if(callback)callback(true);return}
-  console.log("[OVP SYNC] Invio "+total+" entries...");
-  var next=function(ji,retry){
-    if(ji>=jobs.length){
-      window._ovpSyncing=false;
-      console.log("[OVP SYNC] Completato: "+done+"/"+total+" OK, "+errors+" errori");
-      if(callback)callback(errors===0);
-      return;
+  // Pause auto-sync during OVP sync to avoid _loadDeletedIds spam
+  if(window._autoSyncInterval){clearInterval(window._autoSyncInterval);window._autoSyncInterval=null;window._autoSyncPaused=true}
+  console.log("[OVP SYNC] Invio "+upsertJobs.length+" upsert + "+deleteJobs.length+" delete ("+PARALLEL_N+" paralleli)...");
+  var cursor=0;var running=0;
+  var launchNext=function(){
+    while(running<PARALLEL_N&&cursor<allJobs.length){
+      (function(ji){
+        var job=allJobs[ji];
+        running++;
+        var doSend=function(retry){
+          var params=job.isDel?{action:"deleteEntry",id:job.delId}:{action:"upsert",id:job.id,data:job.b64};
+          window._cloudGet(params,function(r){
+            if(!r&&!job.isDel&&retry<2){
+              setTimeout(function(){doSend(retry+1)},800);return;
+            }
+            done++;
+            if(!r&&!job.isDel){errors++;console.warn("[OVP SYNC] Fallito: "+job.id)}
+            if(done%20===0||done===total)console.log("[OVP SYNC] "+done+"/"+total+"...");
+            running--;
+            if(done>=total){
+              window._ovpSyncing=false;
+              console.log("[OVP SYNC] Completato: "+done+"/"+total+" OK, "+errors+" errori");
+              // Resume auto-sync
+              if(window._autoSyncPaused){window._autoSyncPaused=false;window._startAutoSync()}
+              if(callback)callback(errors===0);
+              return;
+            }
+            // Small delay between launches to avoid hammering the server
+            setTimeout(launchNext,job.isDel?30:80);
+          });
+        };
+        doSend(0);
+      })(cursor);
+      cursor++;
     }
-    var job=jobs[ji];
-    // Log progress every 10 entries
-    if(ji%10===0&&ji<total-20)console.log("[OVP SYNC] "+ji+"/"+total+"...");
-    // Delete jobs vs upsert jobs
-    var params=job.isDel?{action:"deleteEntry",id:job.delId}:{action:"upsert",id:job.id,data:job.b64};
-    window._cloudGet(params,function(r){
-      if(!r&&!job.isDel&&(retry||0)<2){
-        // Retry this entry after a longer pause
-        console.warn("[OVP SYNC] Retry "+job.id+" ("+(retry||0)+"/2)");
-        setTimeout(function(){next(ji,(retry||0)+1)},1500);
-      }else{
-        done++;
-        if(!r&&!job.isDel){errors++;console.warn("[OVP SYNC] Fallito: "+job.id)}
-        // Shorter delay for deletes (100ms) vs upserts (400ms)
-        setTimeout(function(){next(ji+1,0)},job.isDel?100:400);
-      }
-    });
   };
-  next(0,0);
+  launchNext();
 };
 // ═══ EXPLICIT cloud pull — cloud ALWAYS wins (no "keep local if longer") ═══
 window._pullOVPfromCloud = function(callback){

@@ -45,7 +45,7 @@ button{font-family:inherit}
 // Ogni operazione (add/update/delete) via GET individuale
 // ════════════════════════════════════════════════
 window.API_URL = "https://script.google.com/macros/s/AKfycbybSKX7cyn4eQfOHkQc6MNt7TlGpk4buQEO1XPuY17EiC5EzH-WitygEcJWqpjeimSDxw/exec"; // <── INCOLLA QUI IL TUO URL
-window.PRM_VERSION = "2.11-nfkc-20260525";console.log("[PRM] Versione: "+window.PRM_VERSION);
+window.PRM_VERSION = "2.12-inlineps-20260525";console.log("[PRM] Versione: "+window.PRM_VERSION);
 // PDF text sanitizer: replace Unicode chars unsupported by jsPDF default font
 window._ps=function(t){if(!t)return t||"";t=typeof t.normalize==="function"?t.normalize("NFKC"):t;t=t.replace(/₀/g,"0").replace(/₁/g,"1").replace(/₂/g,"2").replace(/₃/g,"3").replace(/₄/g,"4").replace(/₅/g,"5").replace(/₆/g,"6").replace(/₇/g,"7").replace(/₈/g,"8").replace(/₉/g,"9").replace(/⁰/g,"0").replace(/¹/g,"1").replace(/²/g,"2").replace(/³/g,"3").replace(/⁴/g,"4").replace(/⁵/g,"5").replace(/⁶/g,"6").replace(/⁷/g,"7").replace(/⁸/g,"8").replace(/⁹/g,"9").replace(/–/g,"-").replace(/—/g,"-").replace(/\u2011/g,"-").replace(/\u2018/g,"'").replace(/\u2019/g,"'").replace(/\u201C/g,'"').replace(/\u201D/g,'"').replace(/…/g,"...").replace(/≤/g,"<=").replace(/≥/g,">=").replace(/≠/g,"!=").replace(/±/g,"+/-").replace(/\u00A0/g," ").replace(/\u200B/g,"").replace(/\u2192/g,"->").replace(/\u2714/g,"V").replace(/\uFFFD/g,"").replace(/\u2022/g,"-").replace(/\u2030/g,"o/oo").replace(/\u00D7/g,"x").replace(/\u20AC/g,"EUR").replace(/[^\x20-\x7E\xA0-\xFF\n]/g,"");var r="";for(var i=0;i<t.length;i++){var c=t.charCodeAt(i);if((c>=32&&c<=126)||(c>=160&&c<=255)||c===10)r+=t.charAt(i)}return r};
 
@@ -808,6 +808,8 @@ window._saveOVP = function(ovps){
 window._OVP_CHUNK=800;// max chars per text chunk — safe after b64+urlencode
 window._syncOVPtoCloud = function(ovps,callback){
   if(!window.API_URL){if(callback)callback(false);return}
+  if(window._ovpSyncing){console.warn("[OVP SYNC] Sync già in corso, ignorato");if(callback)callback(false);return}
+  window._ovpSyncing=true;
   var ts=new Date().toISOString();
   var jobs=[];
   var CK=window._OVP_CHUNK;
@@ -844,7 +846,7 @@ window._syncOVPtoCloud = function(ovps,callback){
     splitText(ovp.descrizione||"","OVP_"+ovp.id+"_D",ovp.id,"ovp_desc");
     // Each indicator
     (ovp.indicatori||[]).forEach(function(ind,ii){
-      var rawTab=ind.tabData||"";
+      var rawTab=ind.tabData;if(rawTab&&typeof rawTab==="object")rawTab=JSON.stringify(rawTab);rawTab=rawTab||"";
       var rawComm=ind.descrCommento||"";
       var rawDescI=ind.descrInd||"";
       var rawForm=ind.formula||"";
@@ -911,10 +913,11 @@ window._syncOVPtoCloud = function(ovps,callback){
   });
   // Execute sequentially with delay and retry
   var done=0;var errors=0;var total=jobs.length;
-  if(!total){if(callback)callback(true);return}
+  if(!total){window._ovpSyncing=false;if(callback)callback(true);return}
   console.log("[OVP SYNC] Invio "+total+" entries...");
   var next=function(ji,retry){
     if(ji>=jobs.length){
+      window._ovpSyncing=false;
       console.log("[OVP SYNC] Completato: "+done+"/"+total+" OK, "+errors+" errori");
       if(callback)callback(errors===0);
       return;
@@ -1075,11 +1078,11 @@ window._mkPDF = function(en,targetDoc,noSave){
   doc.setFillColor(isStr?235:235,isStr?248:240,isStr?235:250);doc.rect(0,0,W,17,"F");
   doc.setDrawColor(accent[0],accent[1],accent[2]);doc.setLineWidth(0.5);doc.line(0,17,W,17);
   try{doc.addImage(window.LOGO_MD,"PNG",5,0.8,15,15)}catch(e){}
-  doc.setTextColor(accent[0],accent[1],accent[2]);doc.setFontSize(10);doc.setFont(undefined,"bold");
+  doc.setTextColor(accent[0],accent[1],accent[2]);doc.setFontSize(10);doc.setFont("helvetica","bold");
   doc.text("REGIONE MOLISE",23,6);
-  doc.setFontSize(6.5);doc.setFont(undefined,"normal");doc.setTextColor(60);
+  doc.setFontSize(6.5);doc.setFont("helvetica","normal");doc.setTextColor(60);
   doc.text("Piano della Performance Organizzativa 2026-2028",23,10);
-  doc.setFontSize(7);doc.setFont(undefined,"bold");doc.setTextColor(accent[0],accent[1],accent[2]);
+  doc.setFontSize(7);doc.setFont("helvetica","bold");doc.setTextColor(accent[0],accent[1],accent[2]);
   doc.text(area+" | "+sC+" - "+(sN||"").substring(0,70),23,14.5);
   var y=20;
 
@@ -1241,7 +1244,7 @@ window._mkPDF = function(en,targetDoc,noSave){
 
   // Footer
   doc.setDrawColor(150);doc.line(mx,H-7,mxR,H-7);
-  doc.setFontSize(5.5);doc.setFont(undefined,"normal");doc.setTextColor(100);
+  doc.setFontSize(5.5);doc.setFont("helvetica","normal");doc.setTextColor(100);
   doc.text("Regione Molise - Piano della Performance Organizzativa 2026-2028 | Direzione Generale Servizio di Supporto al Direttore Generale",mx,H-3.5);
   doc.text("Pag. "+doc.getCurrentPageInfo().pageNumber,mxR,H-3.5,{align:"right"});
   var pfx=isStr?"STR":"OPR";
@@ -1391,8 +1394,8 @@ window._mkPDFweb = function(en,targetDoc,noSave){
   doc.setFillColor(isStr?230:235,isStr?243:240,isStr?230:250);doc.rect(0,0,W,18,"F");
   doc.setDrawColor(isStr?0:0,isStr?100:51,isStr?0:102);doc.setLineWidth(0.5);doc.line(0,18,W,18);
   try{doc.addImage(window.LOGO_MD,"PNG",5,1,15,15)}catch(e){}
-  doc.setTextColor(0,51,102);doc.setFontSize(11);doc.setFont(undefined,"bold");doc.text("REGIONE MOLISE",23,7);
-  doc.setFontSize(7);doc.setFont(undefined,"normal");
+  doc.setTextColor(0,51,102);doc.setFontSize(11);doc.setFont("helvetica","bold");doc.text("REGIONE MOLISE",23,7);
+  doc.setFontSize(7);doc.setFont("helvetica","normal");
   doc.setTextColor(80);doc.text("Piano della Performance Organizzativa 2026-2028",23,11.5);
   doc.setFontSize(7);doc.text(area+" | "+sC+" - "+sN,23,15);
 
@@ -1402,7 +1405,7 @@ window._mkPDFweb = function(en,targetDoc,noSave){
     // Title bar
     doc.setFillColor(accent==="green"?0:accent==="gold"?184:0,accent==="green"?135:accent==="gold"?134:51,accent==="green"?88:accent==="gold"?11:102);
     doc.rect(mx,y,mxR-mx,5,"F");
-    doc.setTextColor(255);doc.setFontSize(7);doc.setFont(undefined,"bold");
+    doc.setTextColor(255);doc.setFontSize(7);doc.setFont("helvetica","bold");
     doc.text(title,mx+3,y+3.5);y+=6;
     // Rows with text wrapping
     doc.setTextColor(0);doc.setFontSize(6.5);
@@ -1411,14 +1414,14 @@ window._mkPDFweb = function(en,targetDoc,noSave){
     var valMaxW=mxR-valX-2; // max width for value text
     rows.forEach(function(r){
       if(y>H-12){doc.addPage();y=10;}
-      doc.setFont(undefined,"bold");doc.text(r[0]+":",mx+2,y+3);
-      doc.setFont(undefined,"normal");
+      doc.setFont("helvetica","bold");doc.text(r[0]+":",mx+2,y+3);
+      doc.setFont("helvetica","normal");
       var val=String(r[1]||"-");
       // Split text to fit available width
       var lines=doc.splitTextToSize(val,valMaxW);
       var rowH=Math.max(5.5,lines.length*3.5+1.5);
       // Check page break with calculated height
-      if(y+rowH>H-8){doc.addPage();y=10;doc.setFont(undefined,"bold");doc.text(r[0]+":",mx+2,y+3);doc.setFont(undefined,"normal")}
+      if(y+rowH>H-8){doc.addPage();y=10;doc.setFont("helvetica","bold");doc.text(r[0]+":",mx+2,y+3);doc.setFont("helvetica","normal")}
       doc.text(lines,valX,y+3);
       doc.setDrawColor(230);doc.line(mx,y+rowH,mxR,y+rowH);
       y+=rowH;
@@ -1480,7 +1483,7 @@ window._mkPDFweb = function(en,targetDoc,noSave){
 
   // Footer
   doc.setDrawColor(150);doc.line(mx,H-7,mxR,H-7);
-  doc.setFontSize(5);doc.setFont(undefined,"normal");doc.setTextColor(100);
+  doc.setFontSize(5);doc.setFont("helvetica","normal");doc.setTextColor(100);
   doc.text("Regione Molise - Piano della Performance Organizzativa 2026-2028 | Direzione Generale Servizio di Supporto al Direttore Generale",mx,H-3.5);
   doc.text("Pag. "+doc.getCurrentPageInfo().pageNumber,mxR,H-3.5,{align:"right"});
   var pfx=isStr?"STR":"OPR";
@@ -1552,9 +1555,9 @@ window._exportPacchetto=function(){
     // ── FRONTESPIZIO (bianco) ──
     doc.setDrawColor(0,51,102);doc.setLineWidth(1.5);doc.rect(8,8,281,194);
     try{doc.addImage(window.LOGO_MD,"PNG",128,25,40,40)}catch(e){}
-    doc.setTextColor(0,51,102);doc.setFontSize(20);doc.setFont(undefined,"bold");
+    doc.setTextColor(0,51,102);doc.setFontSize(20);doc.setFont("helvetica","bold");
     doc.text("REGIONE MOLISE",148,80,{align:"center"});
-    doc.setFontSize(13);doc.setFont(undefined,"normal");doc.setTextColor(0);
+    doc.setFontSize(13);doc.setFont("helvetica","normal");doc.setTextColor(0);
     doc.text("Piano della Performance Organizzativa",148,100,{align:"center"});
     doc.text("delle strutture della Giunta Regionale",148,109,{align:"center"});
     doc.text("per il ciclo di programmazione 2026-2028",148,118,{align:"center"});
@@ -1562,7 +1565,7 @@ window._exportPacchetto=function(){
     doc.text("Direzione Generale Servizio di Supporto al Direttore Generale",287,195,{align:"right"});
     // ── INDICE strutturato per Area > Servizio ──
     doc.addPage("a4","landscape");
-    doc.setTextColor(0,51,102);doc.setFontSize(14);doc.setFont(undefined,"bold");
+    doc.setTextColor(0,51,102);doc.setFontSize(14);doc.setFont("helvetica","bold");
     doc.text("INDICE",10,15);
     var iy=25;
     var linkMap=[]; // Store link positions: {page, x, y, entryIdx}
@@ -1573,17 +1576,17 @@ window._exportPacchetto=function(){
       if(!areaSvcs.length)return;
       if(iy>185){doc.addPage("a4","landscape");iy=15}
       doc.setFillColor(0,51,102);doc.rect(10,iy-3,277,6,"F");
-      doc.setTextColor(255);doc.setFontSize(9);doc.setFont(undefined,"bold");
+      doc.setTextColor(255);doc.setFontSize(9);doc.setFont("helvetica","bold");
       doc.text(area.code+" - "+area.name,13,iy+1);iy+=8;
       doc.setTextColor(0);
       areaSvcs.forEach(function(sv){
         var svcEntries=sorted.filter(function(e){return e.serviceCode===sv.code});
         if(!svcEntries.length)return;
         if(iy>190){doc.addPage("a4","landscape");iy=15}
-        doc.setFont(undefined,"bold");doc.setFontSize(8);
+        doc.setFont("helvetica","bold");doc.setFontSize(8);
         var svLines=doc.splitTextToSize(sv.code+" - "+sv.name,260);
         doc.text(svLines,14,iy);iy+=svLines.length*3.5+1;
-        doc.setFont(undefined,"normal");doc.setFontSize(7);
+        doc.setFont("helvetica","normal");doc.setFontSize(7);
         svcEntries.forEach(function(e){
           if(iy>195){doc.addPage("a4","landscape");iy=15}
           var pre=e.type==="strategic"?"STR":"OPR";
@@ -1623,7 +1626,7 @@ window._exportPacchetto=function(){
           doc.setPage(lnk.page);
           doc.link(lnk.x,lnk.y,200,3.5,{pageNumber:entryPages[lnk.idx]});
           // Add page number on the right
-          doc.setFontSize(6);doc.setFont(undefined,"normal");doc.setTextColor(100);
+          doc.setFontSize(6);doc.setFont("helvetica","normal");doc.setTextColor(100);
           doc.text("pag. "+entryPages[lnk.idx],285,lnk.y+2.5,{align:"right"});
           doc.setTextColor(0);
         }
@@ -1632,7 +1635,7 @@ window._exportPacchetto=function(){
       var totalPages=doc.getNumberOfPages();
       for(var pg=1;pg<=totalPages;pg++){
         doc.setPage(pg);
-        doc.setFontSize(6);doc.setFont(undefined,"normal");doc.setTextColor(150);
+        doc.setFontSize(6);doc.setFont("helvetica","normal");doc.setTextColor(150);
         doc.text(pg+" di "+totalPages,287,207,{align:"right"});
       }
       doc.save(filename);
@@ -1737,8 +1740,8 @@ window._doExportOVPpdf=function(){
   doc.setFillColor(245,240,250);doc.rect(0,0,W,18,"F");
   doc.setDrawColor(142,68,173);doc.setLineWidth(0.5);doc.line(0,18,W,18);
   try{doc.addImage(window.LOGO_MD,"PNG",5,1,15,15)}catch(e){}
-  doc.setTextColor(0,51,102);doc.setFontSize(11);doc.setFont(undefined,"bold");doc.text("REGIONE MOLISE",23,7);
-  doc.setFontSize(8);doc.setFont(undefined,"normal");
+  doc.setTextColor(0,51,102);doc.setFontSize(11);doc.setFont("helvetica","bold");doc.text("REGIONE MOLISE",23,7);
+  doc.setFontSize(8);doc.setFont("helvetica","normal");
   doc.text("Obiettivi di Valore Pubblico 2026-2028",23,12);
   doc.text("Direzione Generale Servizio di Supporto al Direttore Generale",23,16);
   var y=24;
@@ -1746,10 +1749,10 @@ window._doExportOVPpdf=function(){
     if(y>H-50){doc.addPage("a4","landscape");y=12;}
     // OVP title
     doc.setFillColor(142,68,173);doc.rect(mx,y,W-16,7,"F");
-    doc.setTextColor(255);doc.setFontSize(10);doc.setFont(undefined,"bold");
+    doc.setTextColor(255);doc.setFontSize(10);doc.setFont("helvetica","bold");
     doc.text(ovp.cod+" - "+(ovp.nome||"").substring(0,90),mx+3,y+5);y+=9;
     // Missioni
-    doc.setTextColor(0);doc.setFontSize(7);doc.setFont(undefined,"normal");
+    doc.setTextColor(0);doc.setFontSize(7);doc.setFont("helvetica","normal");
     doc.text("Missioni: "+ovp.missioni.map(function(m){return"M"+m}).join(", "),mx+2,y+3);y+=5;
     // Indicatori table
     if(ovp.indicatori.length){
@@ -1762,8 +1765,8 @@ window._doExportOVPpdf=function(){
     // Linked STR
     var linkedStrs=subs.filter(function(s){return s.type==="strategic"&&s.data.ovpRef===ovp.id});
     if(linkedStrs.length){
-      doc.setFontSize(7);doc.setFont(undefined,"bold");doc.text("Obiettivi Strategici collegati ("+linkedStrs.length+"):",mx+2,y+3);y+=4;
-      doc.setFont(undefined,"normal");doc.setFontSize(6.5);
+      doc.setFontSize(7);doc.setFont("helvetica","bold");doc.text("Obiettivi Strategici collegati ("+linkedStrs.length+"):",mx+2,y+3);y+=4;
+      doc.setFont("helvetica","normal");doc.setFontSize(6.5);
       linkedStrs.forEach(function(s){
         if(y>H-10){doc.addPage("a4","landscape");y=12;}
         doc.text("  "+s.data.codice+" - "+s.serviceCode+" - "+(s.data.nome||"").substring(0,70),mx+2,y+3);y+=3.5;
@@ -1838,14 +1841,14 @@ window._exportOVPpiao=function(){
   var addHeader=function(){
     if(firstPage)return;
     try{doc.addImage(window.LOGO_MD,"PNG",W-mx-12,3,10,10)}catch(e){}
-    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(8);doc.setFont(undefined,"italic");
+    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(8);doc.setFont("helvetica","italic");
     doc.text("Piano di Attivit\u00e0 e Organizzazione 2026/2028 della Regione Molise",W-mx-14,9,{align:"right"});
     doc.setDrawColor(RC[0],RC[1],RC[2]);doc.line(mx,15,W-mx,15);
     pageY=20;
   };
   var addFooter=function(pg,tp){
     if(pg===1)return;
-    doc.setPage(pg);doc.setFontSize(7);doc.setTextColor(100);doc.setFont(undefined,"normal");
+    doc.setPage(pg);doc.setFontSize(7);doc.setTextColor(100);doc.setFont("helvetica","normal");
     doc.text("Obiettivi di Valore Pubblico della Regione Molise per il triennio 2026/2028",mx,H-4);
     doc.text("Pag. "+pg+" di "+tp,W-mx,H-4,{align:"right"});
   };
@@ -1854,12 +1857,12 @@ window._exportOVPpiao=function(){
   // ═══ TITLE PAGE ═══
   pageY=20;
   try{doc.addImage(window.LOGO_MD,"PNG",W/2-15,35,30,30)}catch(e){}
-  doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(22);doc.setFont(undefined,"bold");
+  doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(22);doc.setFont("helvetica","bold");
   doc.text("PIANO DI ATTIVIT\u00c0 E ORGANIZZAZIONE",W/2,80,{align:"center"});
   doc.text("2026 / 2028",W/2,92,{align:"center"});
-  doc.setTextColor(0,0,0);doc.setFontSize(14);doc.setFont(undefined,"normal");
+  doc.setTextColor(0,0,0);doc.setFontSize(14);doc.setFont("helvetica","normal");
   doc.text("Obiettivi di Valore Pubblico (OVP)",W/2,110,{align:"center"});
-  doc.setFontSize(16);doc.setTextColor(80);doc.setFont(undefined,"bold");
+  doc.setFontSize(16);doc.setTextColor(80);doc.setFont("helvetica","bold");
   doc.text("Regione Molise",W/2,128,{align:"center"});
   // ═══ TOC PAGE ═══
   doc.addPage("a4","landscape");firstPage=false;addHeader();
@@ -1874,20 +1877,20 @@ window._exportOVPpiao=function(){
     var misKeys=Object.keys(misSet).sort();
     // ═══ 1.chNum OVP PAGE ═══
     doc.addPage("a4","landscape");firstPage=false;addHeader();
-    var fullTitle=sn(1,chNum)+" "+ovp.cod+" - "+ovp.nome;
+    var fullTitle=sn(1,chNum)+" "+ovp.cod+" - "+window._ps(ovp.nome||"");
     tocEntries.push({level:1,text:fullTitle,page:doc.getNumberOfPages()});
     doc.setFillColor(RC[0],RC[1],RC[2]);
     var titleLines=doc.splitTextToSize(fullTitle,W-2*mx-8);
     var titleH=Math.max(8,titleLines.length*5+3);
     doc.rect(mx,pageY,W-20,titleH,"F");
-    doc.setTextColor(255);doc.setFontSize(11);doc.setFont(undefined,"bold");
+    doc.setTextColor(255);doc.setFontSize(11);doc.setFont("helvetica","bold");
     doc.text(titleLines,mx+3,pageY+5);pageY+=titleH+4;
     // ═══ 1.chNum.1 Descrizione ═══
     tocEntries.push({level:2,text:sn(1,chNum,1)+" Descrizione",page:doc.getNumberOfPages()});
-    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont(undefined,"bold");
+    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont("helvetica","bold");
     doc.text(sn(1,chNum,1)+" Descrizione",mx,pageY+4);pageY+=7;
-    doc.setTextColor(0);doc.setFontSize(8);doc.setFont(undefined,"normal");
-    var descLines=doc.splitTextToSize(ovp.descrizione||ovp.nome||"",W-2*mx-10);
+    doc.setTextColor(0);doc.setFontSize(8);doc.setFont("helvetica","normal");
+    var descLines=doc.splitTextToSize(window._ps(ovp.descrizione||ovp.nome||""),W-2*mx-10);
     // Paginate description: render lines in chunks that fit the page
     var dli=0;var dlH=3.5;
     while(dli<descLines.length){
@@ -1903,7 +1906,7 @@ window._exportOVPpiao=function(){
     // Stats box - compact
     doc.setFillColor(248,245,245);doc.rect(mx,pageY,W-20,12,"F");
     doc.setDrawColor(RC[0],RC[1],RC[2]);doc.rect(mx,pageY,W-20,12,"S");
-    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(60);
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(60);
     doc.text("Obiettivi Strategici collegati: "+linkedStrs.length,mx+4,pageY+5);
     doc.text("Obiettivi Operativi che concorrono: "+linkedOprs.length,mx+4,pageY+10);
     doc.text("Numero indicatori di misurazione: "+ovp.indicatori.length,mx+140,pageY+5);
@@ -1911,7 +1914,7 @@ window._exportOVPpiao=function(){
     // ═══ 1.chNum.2 Indicatori ═══
     if(ovp.indicatori.length){
       tocEntries.push({level:2,text:sn(1,chNum,2)+" Indicatori",page:doc.getNumberOfPages()});
-      doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont(undefined,"bold");
+      doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont("helvetica","bold");
       doc.text(sn(1,chNum,2)+" Indicatori",mx,pageY+4);pageY+=8;
       ovp.indicatori.forEach(function(ind,ii){
         checkPage(60);
@@ -1922,8 +1925,8 @@ window._exportOVPpiao=function(){
         }
         var chartImg=renderChart(ind,tbl);
         // Indicator header — adaptive height for long names
-        doc.setFontSize(8);doc.setFont(undefined,"bold");
-        var indTitle="Indicatore "+(ii+1)+": "+(ind.nome||"");
+        doc.setFontSize(8);doc.setFont("helvetica","bold");
+        var indTitle="Indicatore "+(ii+1)+": "+window._ps(ind.nome||"");
         var indTitleLines=doc.splitTextToSize(indTitle,W-2*mx-8);
         var indTitleH=Math.max(7,indTitleLines.length*4.5+3);
         checkPage(indTitleH+50);
@@ -1931,6 +1934,7 @@ window._exportOVPpiao=function(){
         doc.setTextColor(255);
         doc.text(indTitleLines,mx+3,pageY+4);pageY+=indTitleH+2;
         // Row 1: table with Tipo column
+        var P=window._ps;
         var tb1=[];
         tb1.push([
           {content:"Indicatore",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
@@ -1941,9 +1945,9 @@ window._exportOVPpiao=function(){
           {content:"Data prevista\nconseguimento",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}},
           {content:"Tipo",styles:{fontStyle:"bold",fillColor:RC,textColor:[255,255,255]}}
         ]);
-        tb1.push([ind.nome||"",ind.formula||"",ind.fonte||"",ind.baseline||"",ind.t1||"",ind.t2||"",ind.tipo||""]);
+        tb1.push([P(ind.nome||""),P(ind.formula||""),P(ind.fonte||""),P(ind.baseline||""),P(ind.t1||""),P(ind.t2||""),P(ind.tipo||"")]);
         if(ind.descrInd){
-          tb1.push([{content:"Descrizione indicatore: "+(ind.descrInd||""),colSpan:7,styles:{fontStyle:"italic",fontSize:6.5}}]);
+          tb1.push([{content:"Descrizione indicatore: "+P(ind.descrInd||""),colSpan:7,styles:{fontStyle:"italic",fontSize:6.5}}]);
         }
         doc.autoTable({startY:pageY,margin:{left:mx,right:mx},body:tb1,theme:"grid",
           tableWidth:W-2*mx,
@@ -1982,9 +1986,9 @@ window._exportOVPpiao=function(){
         }
         // ── descrCommento — paginated, never truncated ──
         if(ind.descrCommento){
-          doc.setFontSize(7);doc.setFont(undefined,"italic");
+          doc.setFontSize(7);doc.setFont("helvetica","italic");
           var cmtMaxW=W-2*mx-10;
-          var cmtL=doc.splitTextToSize(ind.descrCommento,cmtMaxW);
+          var cmtL=doc.splitTextToSize(P(ind.descrCommento||""),cmtMaxW);
           var cmtLineH=3.2;var cmtPad=3;
           var minBlockH=cmtPad*2+cmtLineH+2;// minimum space needed for 1 line
           // Render in chunks that fit the page
@@ -2000,7 +2004,7 @@ window._exportOVPpiao=function(){
             var chunk=cmtL.slice(ci2,ci2+fitLines);
             var chunkH=cmtPad*2+chunk.length*cmtLineH;
             doc.setFillColor(248,245,245);doc.rect(mx+2,pageY,W-2*mx-4,chunkH,"F");
-            doc.setTextColor(60);doc.setFontSize(7);doc.setFont(undefined,"italic");
+            doc.setTextColor(60);doc.setFontSize(7);doc.setFont("helvetica","italic");
             doc.text(chunk,mx+5,pageY+cmtPad+2.5);
             pageY+=chunkH+2;
             ci2+=fitLines;
@@ -2013,12 +2017,12 @@ window._exportOVPpiao=function(){
     // ═══ 1.chNum.3 Sezione riepilogativa ═══
     checkPage(25);
     tocEntries.push({level:2,text:sn(1,chNum,3)+" Sezione riepilogativa",page:doc.getNumberOfPages()});
-    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont(undefined,"bold");
+    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(10);doc.setFont("helvetica","bold");
     doc.text(sn(1,chNum,3)+" Sezione riepilogativa caratteristiche OVP",mx,pageY+4);pageY+=8;
     doc.setTextColor(0);
     // ── 3.1 Missioni, Programmi e strutture amministrative ──
     checkPage(20);
-    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(0,51,102);
     doc.text(sn(1,chNum,3,1)+" Missioni, Programmi e strutture amministrative di riferimento",mx,pageY+4);pageY+=6;
     var misProg={};
     linkedStrs.forEach(function(s){
@@ -2049,12 +2053,12 @@ window._exportOVPpiao=function(){
       });
       doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:mpBody,theme:"plain",styles:{fontSize:7,cellPadding:1.5,lineColor:[220,220,220],lineWidth:0.1}});
       pageY=doc.lastAutoTable.finalY+4;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("Nessuna missione/programma associato.",mx+4,pageY+3);pageY+=6;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("Nessuna missione/programma associato.",mx+4,pageY+3);pageY+=6;}
     // ── 3.2 + 3.3 side-by-side: Primo livello | Secondo livello ──
     checkPage(30);
     var halfW=W/2+5;var startPair=pageY;
     // Left: 3.2 Primo livello
-    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(0,51,102);
     doc.text(sn(1,chNum,3,2)+" Dimensioni primo livello",mx,pageY+4);pageY+=6;
     var allImp=linkedStrs.flatMap(function(s){return s.data.impatto||[]});
     var primoLiv=["AMBIENTALE","CULTURALE","DIGITALE","ECONOMICO","INFRASTRUTTURALE","SANITARIO","SCIENTIFICO","SOCIALE"];
@@ -2062,38 +2066,38 @@ window._exportOVPpiao=function(){
     if(primoFreq.length){
       doc.autoTable({startY:pageY,margin:{left:mx,right:halfW-mx},head:[["Dimensione","N."]],body:primoFreq,theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       var leftEnd=doc.lastAutoTable.finalY;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);var leftEnd=pageY+6;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);var leftEnd=pageY+6;}
     // Right: 3.3 Secondo livello
     pageY=startPair;
-    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(0,51,102);
     doc.text(sn(1,chNum,3,3)+" Dimensioni secondo livello",halfW-mx+10,pageY+4);pageY+=6;
     var secLivFreq=freq(allImp.filter(function(v){return v&&v.indexOf(" ")>0}));
     if(secLivFreq.length){
       doc.autoTable({startY:pageY,margin:{left:halfW-mx+10,right:10},head:[["Dimensione","N."]],body:secLivFreq.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       pageY=Math.max(leftEnd,doc.lastAutoTable.finalY)+5;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",halfW-mx+14,pageY+3);pageY=leftEnd+5;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("-",halfW-mx+14,pageY+3);pageY=leftEnd+5;}
     // ── 3.4 BES: Tipo + Domini side-by-side ──
     checkPage(30);
-    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(0,51,102);
     doc.text(sn(1,chNum,3,4)+" Benessere Equo e Sostenibile (BES)",mx,pageY+4);pageY+=7;
     startPair=pageY;
     // Left: Tipo BES
-    doc.setFontSize(7.5);doc.setFont(undefined,"bold");doc.setTextColor(60);
+    doc.setFontSize(7.5);doc.setFont("helvetica","bold");doc.setTextColor(60);
     doc.text("4a Tipo BES",mx+4,pageY+3);pageY+=5;
     var besT=freq(linkedStrs.flatMap(function(s){return s.data.besTipo||[]}));
     if(besT.length){
       doc.autoTable({startY:pageY,margin:{left:mx+4,right:halfW-mx},head:[["Tipo BES","N."]],body:besT.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[80,80,120],textColor:255}});
       leftEnd=doc.lastAutoTable.finalY;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+8,pageY+3);leftEnd=pageY+5;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("-",mx+8,pageY+3);leftEnd=pageY+5;}
     // Right: Domini BES
     pageY=startPair;
-    doc.setFontSize(7.5);doc.setFont(undefined,"bold");doc.setTextColor(60);
+    doc.setFontSize(7.5);doc.setFont("helvetica","bold");doc.setTextColor(60);
     doc.text("4b Domini BES",halfW-mx+10,pageY+3);pageY+=5;
     var besD=freq(linkedStrs.flatMap(function(s){return s.data.besDomini||[]}));
     if(besD.length){
       doc.autoTable({startY:pageY,margin:{left:halfW-mx+10,right:10},head:[["Dominio BES","N."]],body:besD.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[80,80,120],textColor:255}});
       pageY=Math.max(leftEnd,doc.lastAutoTable.finalY)+5;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",halfW-mx+14,pageY+3);pageY=leftEnd+5;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("-",halfW-mx+14,pageY+3);pageY=leftEnd+5;}
     // ── OPR natura dimensions ──
     var allNat=linkedOprs.flatMap(function(o){var n=o.data.natura;return Array.isArray(n)?n:n?[n]:[]});
     var macroMap={"EFFICIENZA":{subs:{}},"EFFICACIA":{subs:{}},"SALUTE DELLE RISORSE":{subs:{}}};
@@ -2109,46 +2113,46 @@ window._exportOVPpiao=function(){
     // ── 3.5 + 3.6 side-by-side: Efficienza | Efficacia ──
     checkPage(30);startPair=pageY;
     // Left: Efficienza
-    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(0,51,102);
     doc.text(sn(1,chNum,3,5)+" Efficienza",mx,pageY+4);pageY+=6;
     var effnSubs=macroMap["EFFICIENZA"].subs;var effnKeys=Object.keys(effnSubs).sort();
     if(effnKeys.length){
       doc.autoTable({startY:pageY,margin:{left:mx,right:halfW-mx},head:[["Sotto-dimensione","N."]],body:effnKeys.map(function(k){return[k,effnSubs[k]+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       leftEnd=doc.lastAutoTable.finalY;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);leftEnd=pageY+6;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);leftEnd=pageY+6;}
     // Right: Efficacia
     pageY=startPair;
-    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(0,51,102);
     doc.text(sn(1,chNum,3,6)+" Efficacia",halfW-mx+10,pageY+4);pageY+=6;
     var effcSubs=macroMap["EFFICACIA"].subs;var effcKeys=Object.keys(effcSubs).sort();
     if(effcKeys.length){
       doc.autoTable({startY:pageY,margin:{left:halfW-mx+10,right:10},head:[["Sotto-dimensione","N."]],body:effcKeys.map(function(k){return[k,effcSubs[k]+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       pageY=Math.max(leftEnd,doc.lastAutoTable.finalY)+5;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",halfW-mx+14,pageY+3);pageY=leftEnd+5;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("-",halfW-mx+14,pageY+3);pageY=leftEnd+5;}
     // ── 3.7 + 3.8 side-by-side: Salute Risorse | Rischio corruzione ──
     checkPage(30);startPair=pageY;
     // Left: Salute delle Risorse
-    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(0,51,102);
     doc.text(sn(1,chNum,3,7)+" Salute Risorse",mx,pageY+4);pageY+=6;
     var salSubs=macroMap["SALUTE DELLE RISORSE"].subs;var salKeys=Object.keys(salSubs).sort();
     if(salKeys.length){
       doc.autoTable({startY:pageY,margin:{left:mx,right:halfW-mx},head:[["Sotto-dimensione","N."]],body:salKeys.map(function(k){return[k,salSubs[k]+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       leftEnd=doc.lastAutoTable.finalY;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);leftEnd=pageY+6;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("-",mx+4,pageY+3);leftEnd=pageY+6;}
     // Right: Rischio corruzione
     pageY=startPair;
-    doc.setFontSize(8);doc.setFont(undefined,"bold");doc.setTextColor(0,51,102);
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(0,51,102);
     doc.text(sn(1,chNum,3,8)+" Rischio corruzione",halfW-mx+10,pageY+4);pageY+=6;
     if(linkedOprs.length){
       var riskFreq=freq(linkedOprs.map(function(o){return o.data.rischio==="si"?"Si ("+(o.data.rischioLivello||"n.d.")+")":o.data.rischio==="no"?"No":"Non indicato"}));
       doc.autoTable({startY:pageY,margin:{left:halfW-mx+10,right:10},head:[["Rischio","N."]],body:riskFreq.map(function(f){return[f.label,f.count+""]}),theme:"grid",styles:{fontSize:6.5,cellPadding:1.5},headStyles:{fillColor:[0,51,102],textColor:255}});
       pageY=Math.max(leftEnd,doc.lastAutoTable.finalY)+5;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("-",halfW-mx+14,pageY+3);pageY=leftEnd+5;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("-",halfW-mx+14,pageY+3);pageY=leftEnd+5;}
 
     // ═══ 1.chNum.4 Elenco Obiettivi Strategici ═══
     checkPage(20);
     tocEntries.push({level:2,text:sn(1,chNum,4)+" Elenco Obiettivi Strategici",page:doc.getNumberOfPages()});
-    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(9);doc.setFont(undefined,"bold");
+    doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(9);doc.setFont("helvetica","bold");
     doc.text(sn(1,chNum,4)+" Elenco degli Obiettivi Strategici che concorrono alla realizzazione dell'OVP",mx,pageY+4);pageY+=7;
     if(linkedStrs.length){
       var strBody=[];
@@ -2166,16 +2170,16 @@ window._exportOVPpiao=function(){
       });
       doc.autoTable({startY:pageY,margin:{left:mx,right:10},body:strBody,theme:"grid",styles:{fontSize:6.5,cellPadding:2,overflow:"linebreak",lineColor:[180,180,180],lineWidth:0.2}});
       pageY=doc.lastAutoTable.finalY+4;
-    }else{doc.setFont(undefined,"normal");doc.setFontSize(7);doc.text("Nessun obiettivo strategico collegato.",mx+4,pageY+3);pageY+=6;}
+    }else{doc.setFont("helvetica","normal");doc.setFontSize(7);doc.text("Nessun obiettivo strategico collegato.",mx+4,pageY+3);pageY+=6;}
   });
   // ═══ TOC with clickable links ═══
   doc.setPage(tocPageNum);
   var ty=20;
-  doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(14);doc.setFont(undefined,"bold");
+  doc.setTextColor(RC[0],RC[1],RC[2]);doc.setFontSize(14);doc.setFont("helvetica","bold");
   doc.text("Indice",mx,ty+6);ty+=12;
   tocEntries.forEach(function(e){
     if(ty>H-15){doc.addPage("a4","landscape");firstPage=false;addHeader();ty=20;}
-    doc.setFontSize(e.level===1?9:8);doc.setFont(undefined,e.level===1?"bold":"normal");
+    doc.setFontSize(e.level===1?9:8);doc.setFont("helvetica",e.level===1?"bold":"normal");
     if(e.level===1){doc.setTextColor(RC[0],RC[1],RC[2])}else{doc.setTextColor(80,80,80)}
     var indent=e.level===1?0:8;
     var pageRef="pag. "+e.page;
@@ -4236,13 +4240,14 @@ function App(){
             h("div",{style:{fontWeight:700,fontSize:14,color:"#8e44ad"}},"Obiettivi di Valore Pubblico 2026-2028"),
             h("div",{style:{display:"flex",gap:6}},
               h("button",{onClick:function(){
+                if(window._ovpSyncing){flash("Sincronizzazione già in corso, attendere...","err");return}
                 window._saveOVP(ovps);
                 flash("Sincronizzazione in corso...","ok");
                 window._syncOVPtoCloud(ovps,function(ok){
                   if(ok)flash("OVP salvati e sincronizzati nel cloud!","ok");
                   else flash("Alcuni OVP non sincronizzati (riprova)","err");
                 });
-              },style:{padding:"6px 14px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:700,fontSize:11,cursor:"pointer",boxShadow:"0 2px 6px rgba(217,54,79,.3)"}},"Salva e Sincronizza OVP"),
+              },disabled:!!window._ovpSyncing,style:{padding:"6px 14px",background:window._ovpSyncing?"#999":"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:700,fontSize:11,cursor:window._ovpSyncing?"not-allowed":"pointer",boxShadow:"0 2px 6px rgba(217,54,79,.3)"}},"Salva e Sincronizza OVP"),
               h("button",{onClick:function(){
                 flash("Caricamento OVP dal cloud...","ok");
                 window._pullOVPfromCloud(function(){

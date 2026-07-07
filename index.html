@@ -3604,6 +3604,76 @@ function Dash(p){
           e.createdBy||"-",
           e.lastModifiedBy&&e.lastModifiedAt!==(e.createdAt||e.timestamp)?e.lastModifiedBy+" ("+new Date(e.lastModifiedAt).toLocaleString("it-IT")+")":"-"
         ]}))
+    ),
+
+    // ── ASSESSMENT RIEPILOGO ──
+    h("div",{className:"cd",style:{marginTop:14,padding:14}},
+      h("div",{style:{fontWeight:700,fontSize:14,color:"#003366",marginBottom:10,paddingBottom:6,borderBottom:"2px solid #003366"}},"Riepilogo Assessment"),
+      (function(){
+        var confirmed=s.filter(function(x){return x.data.assessmentStatus==="confirmed"});
+        var modified=s.filter(function(x){return x.data.assessmentStatus==="modified_confirmed"});
+        var pending=s.filter(function(x){return !x.data.assessmentStatus});
+        var totalAss=confirmed.length+modified.length;
+        var pctAss=s.length?Math.round(totalAss/s.length*100):0;
+        var svcAssess={};
+        s.forEach(function(x){
+          var k=x.serviceCode;
+          if(!svcAssess[k])svcAssess[k]={code:k,name:x.serviceName||k,total:0,confirmed:0,modified:0,pending:0,authors:{}};
+          svcAssess[k].total++;
+          if(x.data.assessmentStatus==="confirmed")svcAssess[k].confirmed++;
+          else if(x.data.assessmentStatus==="modified_confirmed")svcAssess[k].modified++;
+          else svcAssess[k].pending++;
+          if(x.author)svcAssess[k].authors[x.author]=x.data.assessmentStatus||"pending";
+        });
+        var svcList=Object.keys(svcAssess).map(function(k){return svcAssess[k]}).sort(function(a,b){return b.pending-a.pending});
+        var svcCompleti=svcList.filter(function(x){return x.pending===0});
+        var svcMancanti=svcList.filter(function(x){return x.pending>0});
+        return h("div",null,
+          h("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:14}},
+            kpi(totalAss+"/"+s.length,"Schede Valutate",pctAss>=100?"#008758":pctAss>=50?"#b8860b":"#d9364f"),
+            kpi(pctAss+"%","Completamento",pctAss>=100?"#008758":pctAss>=50?"#b8860b":"#d9364f"),
+            kpi(confirmed.length,"Confermate","#008758"),
+            kpi(modified.length,"Mod. e Confermate","#e65100"),
+            kpi(pending.length,"In Attesa",pending.length>0?"#d9364f":"#008758")
+          ),
+          h("div",{style:{height:8,background:"#eee",borderRadius:4,marginBottom:14,overflow:"hidden"}},
+            h("div",{style:{display:"flex",height:"100%"}},
+              h("div",{style:{width:pct2(confirmed.length,s.length),background:"#4caf50",transition:"width .3s"}}),
+              h("div",{style:{width:pct2(modified.length,s.length),background:"#ff9800",transition:"width .3s"}})
+            )
+          ),
+          h("div",{style:{display:"flex",gap:14,fontSize:10,marginBottom:14,color:"#555"}},
+            h("span",null,h("span",{style:{color:"#4caf50"}},"\u2588")," Confermate"),
+            h("span",null,h("span",{style:{color:"#ff9800"}},"\u2588")," Modificate"),
+            h("span",null,h("span",{style:{color:"#ccc"}},"\u2588")," In attesa")
+          ),
+          svcMancanti.length?h("div",{style:{marginBottom:12}},
+            h("div",{style:{fontWeight:600,fontSize:12,color:"#d9364f",marginBottom:6}},"\u26A0 Servizi con schede in attesa di assessment ("+svcMancanti.length+"):"),
+            h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}},
+              svcMancanti.map(function(sv){
+                var authList=Object.keys(sv.authors);
+                var pendAuth=authList.filter(function(a){return sv.authors[a]==="pending"});
+                return h("div",{key:sv.code,style:{padding:"6px 10px",borderRadius:4,border:"1px solid #ffcdd2",background:"#fff5f5",fontSize:11}},
+                  h("div",{style:{fontWeight:600,color:"#003366"}},sv.code+" - "+sv.name),
+                  h("div",{style:{color:"#888",marginTop:2}},sv.pending+" di "+sv.total+" in attesa"),
+                  pendAuth.length?h("div",{style:{color:"#d9364f",marginTop:2,fontSize:10}},"Utenti: "+pendAuth.join(", ")):null
+                )
+              })
+            )
+          ):null,
+          svcCompleti.length?h("div",null,
+            h("div",{style:{fontWeight:600,fontSize:12,color:"#008758",marginBottom:6}},"\u2705 Servizi con assessment completato ("+svcCompleti.length+"):"),
+            h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}},
+              svcCompleti.map(function(sv){
+                return h("div",{key:sv.code,style:{padding:"4px 8px",borderRadius:4,border:"1px solid #c8e6c9",background:"#f1f8e9",fontSize:11}},
+                  h("span",{style:{fontWeight:600,color:"#2e7d32"}},sv.code),
+                  h("span",{style:{color:"#555",marginLeft:4}},sv.confirmed+" conf. "+sv.modified+" mod.")
+                )
+              })
+            )
+          ):null
+        );
+      })()
     )
   );
 }
@@ -4070,7 +4140,7 @@ function App(){
       h("div",{style:{maxWidth:1100,margin:"0 auto",padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",height:58}},
         h("div",{style:{display:"flex",alignItems:"center",gap:10}},
           h("img",{src:window.LOGO_SM,style:{width:38,height:38,borderRadius:3}}),
-          h("div",null,h("div",{style:{color:"#c8a84c",fontWeight:700,fontSize:13}},"REGIONE MOLISE"),h("div",{style:{color:"rgba(255,255,255,.6)",fontSize:10}},"Servizio Supporto DG della Giunta Regionale"),h("div",{style:{color:"rgba(255,255,255,.3)",fontSize:9}},"Piano Performance Organizzativa "+piano))
+          h("div",null,h("div",{style:{color:"#c8a84c",fontWeight:700,fontSize:13}},"REGIONE MOLISE"),h("div",{style:{color:"rgba(255,255,255,.6)",fontSize:10}},"Servizio Supporto DG della Giunta Regionale"),h("div",{style:{color:"rgba(255,255,255,.45)",fontSize:9}},"Ufficio Programmazione strategica - Performance organizzativa - Coordinamento controlli interni - Controllo Strategico"),h("div",{style:{color:"rgba(255,255,255,.45)",fontSize:9}},"Ufficio Statistico"),h("div",{style:{color:"rgba(255,255,255,.3)",fontSize:9}},"Piano Performance Organizzativa "+piano))
         ),
         h("nav",{style:{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}},
           h("button",{onClick:function(){setV("select")},style:{padding:"6px 12px",borderRadius:3,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:v==="select"||v==="service"||v==="form"?"rgba(200,168,76,.2)":"transparent",color:v==="select"||v==="service"||v==="form"?"#c8a84c":"rgba(255,255,255,.5)"}},"Compilazione"),
@@ -4186,7 +4256,7 @@ function App(){
                   ),
                   h("div",{style:{fontSize:13,fontWeight:600,marginBottom:4}},d.nome),
                   d.descrizione?h("div",{style:{fontSize:11,color:"#555",marginBottom:4}},d.descrizione):null,
-                  h("div",{style:{fontSize:10,color:"#888"}},"Servizio: "+en.serviceCode+" | Area: "+(en.areaCode||"-"))
+                  h("div",{style:{fontSize:10,color:"#888"}},"Servizio: "+en.serviceCode+" - "+(en.serviceName||"")+" | Area: "+(en.areaCode||"-")+" - "+(en.areaName||""))
                 ),
                 // Action buttons
                 h("div",{style:{display:"flex",gap:4,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}},
@@ -4363,7 +4433,7 @@ function App(){
                 h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Servizi"),
                 h("th",{style:{padding:"6px 10px",background:"#003366",color:"#fff",textAlign:"left"}},"Azioni")
               )),
-              h("tbody",null,users.map(function(u,i){
+              h("tbody",null,users.slice().sort(function(a,b){return(a.name||"").toLowerCase()>(b.name||"").toLowerCase()?1:-1}).map(function(u,i){
                 var uSubs=subs.filter(function(s){return s.author===u.name||s.createdBy===u.name});
                 var uSvcs={};uSubs.forEach(function(s){uSvcs[s.serviceCode]=true});
                 return h("tr",{key:u.name,style:{background:i%2?"#f8f9fa":"#fff"}},

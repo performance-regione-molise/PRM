@@ -4137,10 +4137,10 @@ function App(){
 
     // Header
     h("header",{style:{background:"#003366",borderBottom:"3px solid #c8a84c",position:"sticky",top:0,zIndex:100}},
-      h("div",{style:{maxWidth:1100,margin:"0 auto",padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",height:58}},
+      h("div",{style:{maxWidth:1100,margin:"0 auto",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}},
         h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-          h("img",{src:window.LOGO_SM,style:{width:38,height:38,borderRadius:3}}),
-          h("div",null,h("div",{style:{color:"#c8a84c",fontWeight:700,fontSize:13}},"REGIONE MOLISE"),h("div",{style:{color:"rgba(255,255,255,.6)",fontSize:10}},"Servizio Supporto DG della Giunta Regionale"),h("div",{style:{color:"rgba(255,255,255,.45)",fontSize:9}},"Ufficio Programmazione strategica - Performance organizzativa - Coordinamento controlli interni - Controllo Strategico"),h("div",{style:{color:"rgba(255,255,255,.45)",fontSize:9}},"Ufficio Statistico"),h("div",{style:{color:"rgba(255,255,255,.3)",fontSize:9}},"Piano Performance Organizzativa "+piano))
+          h("img",{src:window.LOGO_SM,style:{width:38,height:38,borderRadius:3,flexShrink:0}}),
+          h("div",{style:{lineHeight:"1.35"}},h("div",{style:{color:"#c8a84c",fontWeight:700,fontSize:13}},"REGIONE MOLISE"),h("div",{style:{color:"rgba(255,255,255,.75)",fontSize:10.5}},"Servizio Supporto DG della Giunta Regionale"),h("div",{style:{color:"rgba(255,255,255,.6)",fontSize:9.5}},"Ufficio Programmazione strategica - Performance organizzativa - Coordinamento controlli interni - Controllo Strategico"),h("div",{style:{color:"rgba(255,255,255,.6)",fontSize:9.5}},"Ufficio Statistico"),h("div",{style:{color:"rgba(255,255,255,.35)",fontSize:9,marginTop:2}},"Piano Performance Organizzativa "+piano))
         ),
         h("nav",{style:{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}},
           h("button",{onClick:function(){setV("select")},style:{padding:"6px 12px",borderRadius:3,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:v==="select"||v==="service"||v==="form"?"rgba(200,168,76,.2)":"transparent",color:v==="select"||v==="service"||v==="form"?"#c8a84c":"rgba(255,255,255,.5)"}},"Compilazione"),

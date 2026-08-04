@@ -134,6 +134,22 @@ window._cloudGet = function(params,callback){
   .catch(function(e){console.error("cloudGet error:",e);if(callback)callback(null)});
 };
 
+// ── POST verso Apps Script (nessun limite di lunghezza) ──
+// Usa Content-Type text/plain per evitare il preflight CORS.
+// Richiede doPost(e) lato Apps Script; se assente si ricade automaticamente su GET.
+window._postSupported = null; // null=non testato, true/false=esito
+window._cloudPost = function(params,callback){
+  if(!window.API_URL){if(callback)callback(null);return}
+  fetch(window.API_URL,{
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(params)
+  })
+  .then(function(r){return r.json()})
+  .then(function(d){if(callback)callback(d)})
+  .catch(function(e){console.warn("cloudPost non disponibile:",e.message);if(callback)callback(null)});
+};
+
 // ── Coda di salvataggio: processa una operazione alla volta ──
 window._queueCallback = null; // called when queue empties
 window._processQueue = function(){
@@ -152,12 +168,16 @@ window._processQueue = function(){
     if(result&&result.ok){
       console.log("[CLOUD OK] "+op.params.action+(result.count?" total:"+result.count:"")+(op.id?" id:"+op.id:""));
     }else if(result===null){
-      // Network error — always retry
-      if(op.retries<5){
-        console.warn("[CLOUD NET-ERR retry "+op.retries+"/5] "+op.params.action);
-        window._saveQueue.unshift(op);
+      // Network error — retry with longer patience (Apps Script throttles bursts)
+      if(op.retries<8){
+        console.warn("[CLOUD NET-ERR retry "+op.retries+"/8] "+op.params.action);
+        window._saveQueue.push(op);
       }else{
-        console.error("[CLOUD FAIL-NET] "+op.params.action+" dopo 5 tentativi");
+        console.error("[CLOUD FAIL-NET] "+op.params.action+" dopo 8 tentativi"+(op.id?" id:"+op.id:""));
+        op.retries=0;
+        window._cloudFailed=window._cloudFailed||[];
+        window._cloudFailed.push(op);
+        window.dispatchEvent(new Event("cloudFailed"));
       }
     }else{
       if(op.retries<5){
@@ -165,10 +185,14 @@ window._processQueue = function(){
         window._saveQueue.unshift(op);
       }else{
         console.error("[CLOUD FAIL] "+op.params.action+" dopo 5 tentativi",result);
+        op.retries=0;
+        window._cloudFailed=window._cloudFailed||[];
+        window._cloudFailed.push(op);
+        window.dispatchEvent(new Event("cloudFailed"));
       }
     }
-    // Progressive delay: 600ms, 1200ms, 2400ms, 4800ms...
-    var delay=600*Math.pow(2,Math.min(op.retries-1,3));
+    // Progressive delay: 600ms, 1200ms, 2400ms ... fino a ~10s sui retry ripetuti
+    var delay=600*Math.pow(2,Math.min(op.retries-1,4));
     if(window._saveQueue.length)setTimeout(window._processQueue,delay);
     else{
       window._syncing=false;
@@ -177,6 +201,20 @@ window._processQueue = function(){
       if(window._queueCallback){var cb=window._queueCallback;window._queueCallback=null;setTimeout(cb,500)}
     }
   });
+};
+
+// ── Ritenta le operazioni cloud definitivamente fallite ──
+window._cloudFailed = window._cloudFailed || [];
+window._retryFailedOps = function(){
+  var f=window._cloudFailed||[];
+  if(!f.length){alert("Nessuna operazione in sospeso: tutto sincronizzato.");return 0}
+  var n=f.length;
+  f.forEach(function(op){op.retries=0;window._saveQueue.push(op)});
+  window._cloudFailed=[];
+  window.dispatchEvent(new Event("cloudFailed"));
+  window._syncing=true;window.dispatchEvent(new Event("syncStatus"));
+  window._processQueue();
+  return n;
 };
 
 // ── Save to localStorage ──
@@ -286,23 +324,61 @@ window._cloudBulkPush = function(entries){
 };
 
 // ── Save users to cloud ──
+// Strategia: POST (nessun limite) con fallback automatico su GET.
+// Il payload GET viene alleggerito rimuovendo i campi vuoti.
 window._cloudSaveUsers = function(users){
   if(!window.API_URL)return;
-  var b64=window._b64(JSON.stringify(users));
-  var testUrl=window.API_URL+"?action=saveUsers&data="+encodeURIComponent(b64);
-  if(testUrl.length>7000){
-    // Try with stripped data (remove migrated flag and shorten)
-    var slim=users.map(function(u){var o={name:u.name,pwd:u.pwd,hash:u.hash,email:u.email||"",lastLogin:u.lastLogin||"",registered:u.registered||""};if(u.migrated)o.migrated=true;return o});
-    var sb64=window._b64(JSON.stringify(slim));
-    var sUrl=window.API_URL+"?action=saveUsers&data="+encodeURIComponent(sb64);
-    if(sUrl.length>7000){
-      if(!window._saveUsersWarnShown){console.warn("[CLOUD] saveUsers: "+users.length+" utenti troppo grandi per URL GET ("+testUrl.length+" chars). Salvati solo in localStorage.");window._saveUsersWarnShown=true}
+  // Payload compatto: elimina i campi vuoti, che pesano solo
+  var compact=users.map(function(u){
+    var o={name:u.name,pwd:u.pwd,hash:u.hash};
+    if(u.email)o.email=u.email;
+    if(u.lastLogin)o.lastLogin=u.lastLogin;
+    if(u.registered)o.registered=u.registered;
+    if(u.migrated)o.migrated=true;
+    return o;
+  });
+  var b64=window._b64(JSON.stringify(compact));
+
+  var viaGet=function(){
+    var url=window.API_URL+"?action=saveUsers&data="+encodeURIComponent(b64);
+    if(url.length<=7800){
+      window._saveQueue.push({params:{action:"saveUsers",data:b64},retries:0});
+      window._processQueue();
       return;
     }
-    b64=sb64;
-  }
-  window._saveQueue.push({params:{action:"saveUsers",data:b64},retries:0});
-  window._processQueue();
+    // Ultimo tentativo: solo i campi indispensabili all'accesso
+    var minimal=users.map(function(u){var o={name:u.name,pwd:u.pwd,hash:u.hash};if(u.migrated)o.migrated=true;return o});
+    var mb64=window._b64(JSON.stringify(minimal));
+    if((window.API_URL+"?action=saveUsers&data="+encodeURIComponent(mb64)).length<=7800){
+      console.warn("[CLOUD] saveUsers: payload ridotto ai campi essenziali ("+users.length+" utenti). Email e date non sincronizzate: abilita doPost lato Apps Script per rimuovere il limite.");
+      window._saveQueue.push({params:{action:"saveUsers",data:mb64},retries:0});
+      window._processQueue();
+      return;
+    }
+    if(!window._saveUsersWarnShown){
+      console.error("[CLOUD] saveUsers: "+users.length+" utenti superano il limite dell'URL GET ("+url.length+" caratteri). Salvati solo in locale. Abilita doPost lato Apps Script per sincronizzarli.");
+      window._saveUsersWarnShown=true;
+    }
+    window._saveUsersBlocked=true;
+    window.dispatchEvent(new Event("cloudFailed"));
+  };
+
+  // Se il POST e gia risultato non disponibile, vai diretto su GET
+  if(window._postSupported===false){viaGet();return}
+
+  window._cloudPost({action:"saveUsers",data:b64},function(res){
+    if(res&&res.ok){
+      window._postSupported=true;
+      window._saveUsersBlocked=false;
+      console.log("[CLOUD OK] saveUsers via POST: "+users.length+" utenti");
+    }else{
+      if(window._postSupported===null){
+        console.warn("[CLOUD] doPost non attivo sul backend: uso GET (limite ~"+"7800 caratteri).");
+      }
+      window._postSupported=false;
+      viaGet();
+    }
+  });
 };
 
 // ── Load from cloud (GET, always reliable) ──
@@ -1785,10 +1861,28 @@ window._repairStratRefs=function(silent){
     return ns;
   });
   if(!fixed.length){if(!silent)alert("Tutti i riferimenti sono gia allineati.");return 0}
+  if(!silent){
+    var stima=Math.ceil(fixed.length*0.8);
+    if(!confirm(fixed.length+" obiettivi operativi hanno un riferimento allo strategico non aggiornato.\n\nProcedo con il riallineamento?\n\nLa sincronizzazione sul cloud richiedera circa "+stima+" secondi: resta su questa pagina fino al termine."))return 0;
+  }
+  // Salvataggio locale immediato (sempre sicuro)
   window._SUBS=updated;window._save(updated);
-  fixed.forEach(function(e){try{window._cloudSaveEntry(e)}catch(err){}});
   window.dispatchEvent(new Event("subsRepaired"));
-  if(!silent)alert("Riallineati "+fixed.length+" obiettivi operativi al rispettivo obiettivo strategico.");
+  // Invio al cloud tramite la coda, con notifica al termine
+  var before=(window._cloudFailed||[]).length;
+  fixed.forEach(function(e){try{window._cloudSaveEntry(e)}catch(err){}});
+  if(!silent){
+    var check=function(){
+      if(window._saveQueue&&window._saveQueue.length){setTimeout(check,1000);return}
+      var failed=(window._cloudFailed||[]).length-before;
+      if(failed>0){
+        alert("Riallineati "+fixed.length+" obiettivi operativi.\n\nAttenzione: "+failed+" salvataggi non sono arrivati al cloud (rete instabile).\nLe modifiche sono comunque salvate su questo dispositivo.\n\nUsa il pulsante \"Reinvia al cloud\" per completare la sincronizzazione.");
+      }else{
+        alert("Riallineamento completato: "+fixed.length+" obiettivi operativi aggiornati e sincronizzati sul cloud.");
+      }
+    };
+    setTimeout(check,1500);
+  }
   return fixed.length;
 };
 
@@ -3876,6 +3970,59 @@ function App(){
 
   var flash=function(m,t){setToast({m:m,t:t||"ok"});setTimeout(function(){setToast(null)},3000)};
 
+  // Conteggio salvataggi cloud falliti (per il pulsante di reinvio)
+  var _nf=useState(0),nFailed=_nf[0],setNFailed=_nf[1];
+  useEffect(function(){
+    var upd=function(){setNFailed((window._cloudFailed||[]).length)};
+    window.addEventListener("cloudFailed",upd);
+    window.addEventListener("syncStatus",upd);
+    upd();
+    return function(){window.removeEventListener("cloudFailed",upd);window.removeEventListener("syncStatus",upd)};
+  },[]);
+
+  // ── Riassegnazione schede ad altro utente ──
+  // ids: array di id scheda da riassegnare; targetName: nome utente destinatario
+  var reassignEntries=function(ids,targetName){
+    var targetUser=users.filter(function(x){return x.name===targetName})[0];
+    if(!targetUser){alert("Utente '"+targetName+"' non trovato tra quelli registrati.");return 0}
+    var idSet={};ids.forEach(function(i){idSet[i]=true});
+    var now=new Date().toISOString();
+    var changed=[];
+    var updated=subs.map(function(s){
+      if(!idSet[s.id])return s;
+      var prev=s.author||s.createdBy||"(sconosciuto)";
+      var ns=Object.assign({},s,{
+        author:targetName,
+        createdBy:targetName,
+        authorHash:targetUser.hash||"",
+        previousAuthor:prev,
+        reassignedAt:now,
+        reassignedBy:"admin",
+        lastModifiedBy:"admin",
+        lastModifiedAt:now
+      });
+      changed.push(ns);
+      return ns;
+    });
+    if(!changed.length)return 0;
+    setSubs(updated);window._save(updated);
+    changed.forEach(function(e){try{window._cloudSaveEntry(e)}catch(err){}});
+    return changed.length;
+  };
+  // Chiede il destinatario e riassegna
+  var promptReassign=function(ids,label){
+    var avail=users.map(function(x){return x.name}).sort();
+    if(!avail.length){alert("Nessun utente registrato a cui riassegnare.");return}
+    var target=prompt("Riassegna "+label+" a quale utente?\n\nUtenti registrati:\n"+avail.map(function(n){return"- "+n}).join("\n")+"\n\nScrivi il nome esatto:");
+    if(!target)return;
+    target=target.trim();
+    var tu=users.filter(function(x){return x.name===target})[0];
+    if(!tu){alert("Utente '"+target+"' non trovato. Controlla di aver scritto il nome esattamente come in elenco.");return}
+    if(!confirm("Confermi la riassegnazione di "+label+" a '"+target+"'?\n\nIl nuovo autore potra modificare le schede con le proprie credenziali."))return;
+    var n=reassignEntries(ids,target);
+    if(n)flash(n===1?"Scheda riassegnata a "+target:n+" schede riassegnate a "+target);
+  };
+
   var selSvc=function(s){
     if(!curAuthor && !logged){
       // Not authenticated - require login first
@@ -4525,6 +4672,7 @@ function App(){
             h("button",{onClick:function(){window._exportAssessmentPDF(false)},title:"Scarica un unico PDF con SOLO le schede confermate o modificate e confermate",style:{padding:"6px 12px",background:"#00897b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"PDF Assessment"),
             h("button",{onClick:function(){window._exportReport()},style:{padding:"6px 12px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"Report Excel"),
             h("button",{onClick:function(){var n=window._repairStratRefs();if(n)setSubs(window._SUBS.slice())},title:"Riallinea la denominazione dell'obiettivo strategico su tutti gli operativi collegati",style:{padding:"6px 12px",background:"#5c6f82",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"Allinea Rif. STR"),
+            nFailed>0?h("button",{onClick:function(){var n=window._retryFailedOps();if(n)flash("Reinvio di "+n+" salvataggi in corso...")},title:"Alcuni salvataggi non sono arrivati al cloud: reinvia",style:{padding:"6px 12px",background:"#e67e22",color:"#fff",border:"2px solid #b8860b",borderRadius:4,fontWeight:700,cursor:"pointer",fontSize:11}},"\u21BB Reinvia al cloud ("+nFailed+")"):null,
             h("button",{onClick:function(){window._recover()},style:{padding:"8px 16px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Recupera Dati")
           )
         ),
@@ -4590,20 +4738,9 @@ function App(){
                       });
                     },style:{padding:"3px 6px",fontSize:9,background:"#0066cc",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600,marginRight:3}},"Invia pwd"):null,
                     h("button",{onClick:function(){
-                      var target=prompt("Riassegna le "+uSubs.length+" schede di '"+u.name+"' a quale utente?\n\nUtenti disponibili:\n"+users.filter(function(x){return x.name!==u.name}).map(function(x){return"- "+x.name}).join("\n")+"\n\nScrivi il nome esatto:");
-                      if(!target)return;
-                      var targetUser=users.filter(function(x){return x.name===target})[0];
-                      if(!targetUser){alert("Utente '"+target+"' non trovato");return}
-                      if(!confirm("Riassegnare "+uSubs.length+" schede da '"+u.name+"' a '"+target+"'?"))return;
-                      var updated=subs.map(function(s){
-                        if(s.author===u.name||s.createdBy===u.name){
-                          var ns=Object.assign({},s);ns.author=target;ns.createdBy=target;ns.authorHash=targetUser.hash;
-                          window._cloudSaveEntry(ns);return ns;
-                        }return s;
-                      });
-                      setSubs(updated);window._save(updated);
-                      flash("Schede riassegnate a "+target);
-                    },style:{padding:"3px 6px",fontSize:9,background:"#e67e22",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",marginRight:3}},"Riassegna"),
+                      if(!uSubs.length){alert("'"+u.name+"' non ha schede da riassegnare.");return}
+                      promptReassign(uSubs.map(function(s){return s.id}),"TUTTE le "+uSubs.length+" schede di '"+u.name+"'");
+                    },title:"Riassegna tutte le schede di questo utente",style:{padding:"3px 6px",fontSize:9,background:"#e67e22",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",marginRight:3}},"Riassegna"),
                     h("button",{onClick:function(){
                       if(uSubs.length>0){alert("Impossibile eliminare: "+u.name+" ha "+uSubs.length+" schede. Riassegnale prima.");return}
                       if(!confirm("Eliminare l'utente '"+u.name+"'?"))return;
@@ -4618,13 +4755,26 @@ function App(){
             // Also show entries without a registered user
             (function(){
               var regNames={};users.forEach(function(u){regNames[u.name]=true});
-              var orphans=subs.filter(function(s){return s.author&&!regNames[s.author]});
-              var orphanAuthors={};orphans.forEach(function(s){orphanAuthors[s.author]=true});
-              if(Object.keys(orphanAuthors).length===0)return null;
-              return h("div",{style:{marginTop:12,padding:10,background:"#fff3cd",borderRadius:4,fontSize:11}},
-                h("b",null,"Autori senza credenziali registrate: "),
-                Object.keys(orphanAuthors).join(", "),
-                " (schede create prima del sistema credenziali)"
+              var orphans=subs.filter(function(s){var a=s.createdBy||s.author;return a&&!regNames[a]});
+              var orphanMap={};orphans.forEach(function(s){var a=s.createdBy||s.author;if(!orphanMap[a])orphanMap[a]=[];orphanMap[a].push(s)});
+              var names=Object.keys(orphanMap);
+              if(names.length===0)return null;
+              return h("div",{style:{marginTop:12,padding:10,background:"#fff3cd",borderRadius:4,fontSize:11,border:"1px solid #ffc107"}},
+                h("div",{style:{marginBottom:6}},
+                  h("b",null,"Autori senza credenziali registrate "),
+                  h("span",{style:{color:"#856404"}},"(schede create prima del sistema credenziali)")),
+                h("div",{style:{fontSize:10,color:"#856404",marginBottom:8}},
+                  "Riassegnando le schede a un utente registrato, quest'ultimo diventa il nuovo autore e potra modificarle con le proprie credenziali. L'autore precedente viene sostituito."),
+                names.sort().map(function(nm){
+                  var its=orphanMap[nm];
+                  return h("div",{key:nm,style:{display:"flex",alignItems:"center",gap:8,padding:"4px 8px",marginBottom:3,background:"#fff",borderRadius:3,border:"1px solid #ffe08a"}},
+                    h("span",{style:{fontWeight:600,flex:1}},nm),
+                    h("span",{style:{color:"#888",fontSize:10}},its.length+" schede"),
+                    h("button",{onClick:function(){
+                      promptReassign(its.map(function(s){return s.id}),"le "+its.length+" schede di '"+nm+"' (autore senza credenziali)");
+                    },style:{padding:"3px 10px",fontSize:9,background:"#e67e22",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600}},"Riassegna a utente registrato")
+                  );
+                })
               );
             })()
           ),
@@ -4633,13 +4783,20 @@ function App(){
             h("div",{style:{fontWeight:700,fontSize:14,color:"#003366",marginBottom:10,paddingBottom:6,borderBottom:"2px solid #003366"}},"Schede per Utente"),
             (function(){
               var byAuthor={};subs.forEach(function(s){var a=s.createdBy||s.author||"(sconosciuto)";if(!byAuthor[a])byAuthor[a]=[];byAuthor[a].push(s)});
+              var regNamesSet={};users.forEach(function(u){regNamesSet[u.name]=true});
               return Object.keys(byAuthor).sort().map(function(author){
                 var items=byAuthor[author];
                 return h("div",{key:author,style:{marginBottom:12,borderLeft:"3px solid #0066cc",paddingLeft:10}},
-                  h("div",{style:{fontWeight:700,fontSize:12,color:"#0066cc",marginBottom:4}},author+" ("+items.length+" schede)"),
+                  h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}},
+                    h("div",{style:{fontWeight:700,fontSize:12,color:"#0066cc"}},author+" ("+items.length+" schede)"),
+                    !regNamesSet[author]?h("span",{style:{padding:"1px 6px",borderRadius:8,fontSize:9,fontWeight:600,background:"#fff3cd",color:"#856404",border:"1px solid #ffc107"}},"senza credenziali"):null,
+                    h("button",{onClick:function(){
+                      promptReassign(items.map(function(s){return s.id}),"tutte le "+items.length+" schede di '"+author+"'");
+                    },title:"Riassegna tutte le schede di questo autore",style:{padding:"2px 8px",fontSize:9,background:"#e67e22",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600}},"Riassegna tutte")
+                  ),
                   h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:10}},
                     h("thead",null,h("tr",null,
-                      ["Tipo","Servizio","Codice","Descrizione","Peso","Data"].map(function(hd,i){
+                      ["Tipo","Servizio","Codice","Descrizione","Peso","Data","Azioni"].map(function(hd,i){
                         return h("th",{key:i,style:{padding:"3px 6px",background:"#f0f4fa",textAlign:"left",fontSize:9,borderBottom:"1px solid #d9dadb"}},hd);
                       })
                     )),
@@ -4650,7 +4807,13 @@ function App(){
                         h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee",fontFamily:"monospace"}},e.data.codice||"-"),
                         h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee"}},(e.data.nome||"-").substring(0,60)),
                         h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee"}},(e.data.peso||"-")+"%"),
-                        h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee",fontSize:9}},new Date(e.timestamp).toLocaleString("it-IT"))
+                        h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee",fontSize:9}},new Date(e.timestamp).toLocaleString("it-IT")),
+                        h("td",{style:{padding:"2px 6px",borderBottom:"1px solid #eee",whiteSpace:"nowrap"}},
+                          h("button",{onClick:function(){
+                            promptReassign([e.id],"la scheda "+(e.data.codice||e.type)+" ("+e.serviceCode+")");
+                          },title:"Riassegna solo questa scheda",style:{padding:"2px 7px",fontSize:9,background:"#0066cc",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontWeight:600}},"Riassegna"),
+                          e.previousAuthor?h("span",{title:"Autore precedente: "+e.previousAuthor,style:{marginLeft:4,fontSize:9,color:"#888",cursor:"help"}},"\u21BB"):null
+                        )
                       );
                     }))
                   )

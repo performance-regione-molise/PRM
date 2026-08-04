@@ -1768,6 +1768,30 @@ window._exportPDFweb=function(){
 };
 
 // Esporta SOLO le schede con assessment (Confermata o Modificata e confermata)
+// Riallinea i riferimenti allo strategico (stratRif/stratRifDesc) sugli operativi esistenti
+window._repairStratRefs=function(silent){
+  var subs=window._SUBS;if(!subs||!subs.length){if(!silent)alert("Nessun dato");return 0}
+  var strById={};subs.forEach(function(s){if(s.type==="strategic")strById[s.id]=s});
+  var fixed=[];
+  var updated=subs.map(function(s){
+    if(s.type!=="operative"||!s.parentId)return s;
+    var p=strById[s.parentId];
+    if(!p||!p.data)return s;
+    var wantCod=p.data.codice||"",wantNom=p.data.nome||"";
+    var curCod=(s.data&&s.data.stratRif)||"",curNom=(s.data&&s.data.stratRifDesc)||"";
+    if(curCod===wantCod&&curNom===wantNom)return s;
+    var ns=Object.assign({},s,{data:Object.assign({},s.data,{stratRif:wantCod,stratRifDesc:wantNom})});
+    fixed.push(ns);
+    return ns;
+  });
+  if(!fixed.length){if(!silent)alert("Tutti i riferimenti sono gia allineati.");return 0}
+  window._SUBS=updated;window._save(updated);
+  fixed.forEach(function(e){try{window._cloudSaveEntry(e)}catch(err){}});
+  window.dispatchEvent(new Event("subsRepaired"));
+  if(!silent)alert("Riallineati "+fixed.length+" obiettivi operativi al rispettivo obiettivo strategico.");
+  return fixed.length;
+};
+
 window._exportAssessmentPDF=function(useWeb){
   var subs=window._SUBS;if(!subs.length){alert("Nessun dato disponibile");return}
   // Filtra solo schede con assessmentStatus
@@ -4074,11 +4098,34 @@ function App(){
         updated=updated.map(function(s){if(s.id===fEditId){return Object.assign({},s,{data:Object.assign({},s.data,{assessmentStatus:"modified_confirmed",assessmentDate:new Date().toISOString()})})}return s});
         setAssEditMode(false);
       }
+      // ── Propaga denominazione/codice STR agli OPR figli ──
+      var _propagated=[];
+      if(fType==="strategic"){
+        var _oldStr=subs.filter(function(s){return s.id===fEditId})[0];
+        var _oldCod=_oldStr&&_oldStr.data?(_oldStr.data.codice||""):"";
+        var _oldNom=_oldStr&&_oldStr.data?(_oldStr.data.nome||""):"";
+        var _newCod=fData.codice||"";
+        var _newNom=fData.nome||"";
+        if(_oldCod!==_newCod||_oldNom!==_newNom){
+          updated=updated.map(function(s){
+            if(s.type!=="operative")return s;
+            // Figlio se legato per parentId, oppure per vecchio codice STR nello stesso servizio
+            var isChild=(s.parentId===fEditId)||(_oldCod&&s.data&&s.data.stratRif===_oldCod&&s.serviceCode===(_oldStr?_oldStr.serviceCode:s.serviceCode));
+            if(!isChild)return s;
+            var nd=Object.assign({},s.data,{stratRif:_newCod,stratRifDesc:_newNom});
+            var ns=Object.assign({},s,{data:nd,lastModifiedBy:logged?"admin":curAuthor,lastModifiedAt:now});
+            _propagated.push(ns);
+            return ns;
+          });
+        }
+      }
       setSubs(updated);window._save(updated);
       // Cloud: save the updated entry
       var updatedEntry=updated.filter(function(s){return s.id===fEditId})[0];
       if(updatedEntry)window._cloudSaveEntry(updatedEntry);
-      flash("Aggiornato"+(logged?" da admin":"")+"!");
+      // Cloud: save propagated children
+      _propagated.forEach(function(ch){try{window._cloudSaveEntry(ch)}catch(e){}});
+      flash("Aggiornato"+(logged?" da admin":"")+(_propagated.length?" ("+_propagated.length+" operativi aggiornati)":"")+"!");
     } else {
       // New entry with author info
       var en={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
@@ -4477,6 +4524,7 @@ function App(){
             h("button",{onClick:function(){window._exportPacchetto();setTimeout(function(){window._exportPDFweb()},500)},style:{padding:"6px 12px",background:"#8e44ad",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"PDF Web"),
             h("button",{onClick:function(){window._exportAssessmentPDF(false)},title:"Scarica un unico PDF con SOLO le schede confermate o modificate e confermate",style:{padding:"6px 12px",background:"#00897b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"PDF Assessment"),
             h("button",{onClick:function(){window._exportReport()},style:{padding:"6px 12px",background:"#b8860b",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"Report Excel"),
+            h("button",{onClick:function(){var n=window._repairStratRefs();if(n)setSubs(window._SUBS.slice())},title:"Riallinea la denominazione dell'obiettivo strategico su tutti gli operativi collegati",style:{padding:"6px 12px",background:"#5c6f82",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:11}},"Allinea Rif. STR"),
             h("button",{onClick:function(){window._recover()},style:{padding:"8px 16px",background:"#d9364f",color:"#fff",border:"none",borderRadius:4,fontWeight:600,cursor:"pointer",fontSize:12}},"Recupera Dati")
           )
         ),

@@ -1418,7 +1418,8 @@ window._mkPDF = function(en,targetDoc,noSave){
   doc.setDrawColor(150);doc.line(mx,H-7,mxR,H-7);
   doc.setFontSize(5.5);doc.setFont("helvetica","normal");doc.setTextColor(100);
   doc.text("Regione Molise - Piano della Performance Organizzativa "+window.PIANO_CORRENTE+" | Direzione Generale Servizio di Supporto al Direttore Generale",mx,H-3.5);
-  doc.text("Pag. "+doc.getCurrentPageInfo().pageNumber,mxR,H-3.5,{align:"right"});
+  // In modalita pacchetto la numerazione "X di N" e apposta da _doExportPDF: evita la sovrapposizione
+  if(!noSave)doc.text("Pag. "+doc.getCurrentPageInfo().pageNumber,mxR,H-3.5,{align:"right"});
   var pfx=isStr?"STR":"OPR";
   if(!noSave)doc.save("Scheda_"+pfx+"_"+sC.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".pdf");
   return doc;
@@ -1667,7 +1668,8 @@ window._mkPDFweb = function(en,targetDoc,noSave){
   doc.setDrawColor(150);doc.line(mx,H-7,mxR,H-7);
   doc.setFontSize(5);doc.setFont("helvetica","normal");doc.setTextColor(100);
   doc.text("Regione Molise - Piano della Performance Organizzativa "+window.PIANO_CORRENTE+" | Direzione Generale Servizio di Supporto al Direttore Generale",mx,H-3.5);
-  doc.text("Pag. "+doc.getCurrentPageInfo().pageNumber,mxR,H-3.5,{align:"right"});
+  // In modalita pacchetto la numerazione "X di N" e apposta da _doExportPDF: evita la sovrapposizione
+  if(!noSave)doc.text("Pag. "+doc.getCurrentPageInfo().pageNumber,mxR,H-3.5,{align:"right"});
   var pfx=isStr?"STR":"OPR";
   if(!noSave)doc.save("Scheda_"+pfx+"_web_"+sC.replace(/[^a-zA-Z0-9.]/g,"")+"_"+(d.codice||"X").replace(/[^a-zA-Z0-9.]/g,"_")+".pdf");
   return doc;
@@ -1890,14 +1892,16 @@ window._repairStratRefs=function(silent){
 
 window._exportAssessmentPDF=function(useWeb){
   var subs=window._SUBS;if(!subs||!subs.length){alert("Nessun dato disponibile");return}
-  // Solo le schede con esito di assessment
   var assessed=subs.filter(function(e){return e.data&&(e.data.assessmentStatus==="confirmed"||e.data.assessmentStatus==="modified_confirmed")});
-  if(!assessed.length){alert("Nessuna scheda e stata ancora sottoposta ad assessment.\nNon ci sono schede \'Confermata\' o \'Modificata e confermata\' da esportare.");return}
-  // Stesso ordinamento del Pacchetto Formale: per area, servizio, STR seguito dai suoi OPR
+  if(!assessed.length){
+    if(!confirm("Nessuna scheda risulta ancora sottoposta ad assessment.\n\nIl documento verra generato senza alcuna etichetta. Procedo comunque?"))return;
+  }
+  // Stesso perimetro e stesso ordinamento del Pacchetto Formale: tutte le schede,
+  // per area e servizio, ogni strategico seguito dai propri operativi.
   var sorted=[];
   window.AREAS.forEach(function(area){
     area.svcs.forEach(function(sv){
-      var svcEntries=assessed.filter(function(e){return e.serviceCode===sv.code});
+      var svcEntries=subs.filter(function(e){return e.serviceCode===sv.code});
       var strs=svcEntries.filter(function(e){return e.type==="strategic"}).sort(function(a,b){return(a.data.codice||"")>(b.data.codice||"")?1:-1});
       strs.forEach(function(str){
         sorted.push(str);
@@ -1910,14 +1914,15 @@ window._exportAssessmentPDF=function(useWeb){
     });
   });
   var seen={};sorted.forEach(function(e){seen[e.id]=true});
-  assessed.forEach(function(e){if(!seen[e.id])sorted.push(e)});
+  subs.forEach(function(e){if(!seen[e.id])sorted.push(e)});
 
   var nConf=assessed.filter(function(e){return e.data.assessmentStatus==="confirmed"}).length;
   var nMod=assessed.length-nConf;
+  var nNone=sorted.length-assessed.length;
   // Stessa pipeline del Pacchetto Formale: frontespizio + indice con collegamenti ipertestuali
   window._doExportPDF(sorted,useWeb?window._mkPDFweb:window._mkPDF,
     "Schede_Assessment_"+new Date().toISOString().slice(0,10)+".pdf");
-  alert("PDF Assessment scaricato!\n\n"+sorted.length+" schede totali:\n- "+nConf+" Confermate\n- "+nMod+" Modificate e confermate");
+  alert("PDF Assessment scaricato!\n\n"+sorted.length+" schede totali:\n- "+nConf+" Confermate\n- "+nMod+" Modificate e confermate\n- "+nNone+" senza etichetta (nessun assessment)");
 };
 
 // Esporta Alberatura OVP > STR > OPR

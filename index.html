@@ -1697,41 +1697,7 @@ window._exportAll=function(){
   XLSX.writeFile(wb,"Piano_Performance_"+new Date().toISOString().slice(0,10)+".xlsx");
 };
 
-// Esporta pacchetto completo: un Excel multi-foglio + scarica tutti i PDF
-window._exportPacchetto=function(){
-  var subs=window._SUBS;if(!subs.length){alert("Nessun dato");return}
-  var sorted=[];
-  // Order: by AREAS order, then STR first, each STR followed by its OPRs
-  window.AREAS.forEach(function(area){
-    area.svcs.forEach(function(sv){
-      var svcEntries=subs.filter(function(e){return e.serviceCode===sv.code});
-      var strs=svcEntries.filter(function(e){return e.type==="strategic"}).sort(function(a,b){return(a.data.codice||"")>(b.data.codice||"")?1:-1});
-      strs.forEach(function(str){
-        sorted.push(str);
-        // OPR linked to this STR
-        var oprs=svcEntries.filter(function(e){return e.type==="operative"&&e.parentId===str.id}).sort(function(a,b){return(a.data.codice||"")>(b.data.codice||"")?1:-1});
-        oprs.forEach(function(opr){sorted.push(opr)});
-      });
-      // Orphan OPR (no parent STR)
-      var orphanOprs=svcEntries.filter(function(e){return e.type==="operative"&&!strs.some(function(s){return s.id===e.parentId})});
-      orphanOprs.forEach(function(opr){sorted.push(opr)});
-    });
-  });
-  // Add entries not matched to any AREAS service
-  var sortedIds={};sorted.forEach(function(e){sortedIds[e.id]=true});
-  subs.forEach(function(e){if(!sortedIds[e.id])sorted.push(e)});
-  // 1. Excel: un solo foglio riepilogo completo
-  var wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sorted.map(function(e){var d=e.data;return{
-    Tipo:e.type==="strategic"?"STR":"OPR",Area:e.areaCode,Servizio:e.serviceCode,
-    Servizio_Nome:e.serviceName,Codice:d.codice,Descrizione:d.nome,Peso:(d.peso||"")+"%",
-    Tipo_AB:d.tipoAB||"",OVP_Rif:d.ovpRef||"",Cod_Missione:d.missione||"",Missione:window._misFull(d.missione),Cod_Programma:d.programma||"",Programma:window._proFull(d.programma),
-    Natura:Array.isArray(d.natura)?d.natura.join("; "):d.natura||"",Indicatore:d.indicatore||"",UM:d.um||"",Baseline:d.baseline||"",Fonte:d.fonte||"",
-    Formula:d.formula||"",Ris2026:d.ris2026||"",Ris2027:d.ris2027||"",Ris2028:d.ris2028||"",
-    Stakeholders:(d.stakeholders||[]).join("; "),Rischio:d.rischio||"",
-    Autore:e.createdBy||"",Creato:e.createdAt||""
-  }})),"Riepilogo");
-  XLSX.writeFile(wb,"Pacchetto_Performance_"+new Date().toISOString().slice(0,10)+".xlsx");
+// ══ Helper condivisi per la generazione dei PDF (frontespizio, indice, collegamenti) ══
   // Helper: genera frontespizio + indice
   window._mkFrontIndex=function(doc,sorted){
     // ── FRONTESPIZIO (bianco) ──
@@ -1823,6 +1789,42 @@ window._exportPacchetto=function(){
       doc.save(filename);
     }catch(e){console.error("PDF:",e);alert("Errore PDF: "+e.message)}
   };
+
+// Esporta pacchetto completo: un Excel multi-foglio + scarica tutti i PDF
+window._exportPacchetto=function(){
+  var subs=window._SUBS;if(!subs.length){alert("Nessun dato");return}
+  var sorted=[];
+  // Order: by AREAS order, then STR first, each STR followed by its OPRs
+  window.AREAS.forEach(function(area){
+    area.svcs.forEach(function(sv){
+      var svcEntries=subs.filter(function(e){return e.serviceCode===sv.code});
+      var strs=svcEntries.filter(function(e){return e.type==="strategic"}).sort(function(a,b){return(a.data.codice||"")>(b.data.codice||"")?1:-1});
+      strs.forEach(function(str){
+        sorted.push(str);
+        // OPR linked to this STR
+        var oprs=svcEntries.filter(function(e){return e.type==="operative"&&e.parentId===str.id}).sort(function(a,b){return(a.data.codice||"")>(b.data.codice||"")?1:-1});
+        oprs.forEach(function(opr){sorted.push(opr)});
+      });
+      // Orphan OPR (no parent STR)
+      var orphanOprs=svcEntries.filter(function(e){return e.type==="operative"&&!strs.some(function(s){return s.id===e.parentId})});
+      orphanOprs.forEach(function(opr){sorted.push(opr)});
+    });
+  });
+  // Add entries not matched to any AREAS service
+  var sortedIds={};sorted.forEach(function(e){sortedIds[e.id]=true});
+  subs.forEach(function(e){if(!sortedIds[e.id])sorted.push(e)});
+  // 1. Excel: un solo foglio riepilogo completo
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sorted.map(function(e){var d=e.data;return{
+    Tipo:e.type==="strategic"?"STR":"OPR",Area:e.areaCode,Servizio:e.serviceCode,
+    Servizio_Nome:e.serviceName,Codice:d.codice,Descrizione:d.nome,Peso:(d.peso||"")+"%",
+    Tipo_AB:d.tipoAB||"",OVP_Rif:d.ovpRef||"",Cod_Missione:d.missione||"",Missione:window._misFull(d.missione),Cod_Programma:d.programma||"",Programma:window._proFull(d.programma),
+    Natura:Array.isArray(d.natura)?d.natura.join("; "):d.natura||"",Indicatore:d.indicatore||"",UM:d.um||"",Baseline:d.baseline||"",Fonte:d.fonte||"",
+    Formula:d.formula||"",Ris2026:d.ris2026||"",Ris2027:d.ris2027||"",Ris2028:d.ris2028||"",
+    Stakeholders:(d.stakeholders||[]).join("; "),Rischio:d.rischio||"",
+    Autore:e.createdBy||"",Creato:e.createdAt||""
+  }})),"Riepilogo");
+  XLSX.writeFile(wb,"Pacchetto_Performance_"+new Date().toISOString().slice(0,10)+".xlsx");
   // Store sorted for separate calls
   window._lastSorted=sorted;
   // Excel only
@@ -1887,11 +1889,11 @@ window._repairStratRefs=function(silent){
 };
 
 window._exportAssessmentPDF=function(useWeb){
-  var subs=window._SUBS;if(!subs.length){alert("Nessun dato disponibile");return}
-  // Filtra solo schede con assessmentStatus
+  var subs=window._SUBS;if(!subs||!subs.length){alert("Nessun dato disponibile");return}
+  // Solo le schede con esito di assessment
   var assessed=subs.filter(function(e){return e.data&&(e.data.assessmentStatus==="confirmed"||e.data.assessmentStatus==="modified_confirmed")});
-  if(!assessed.length){alert("Nessuna scheda e stata ancora sottoposta ad assessment.\nNon ci sono schede 'Confermata' o 'Modificata e confermata' da esportare.");return}
-  // Ordina: per AREAS, STR seguito dai suoi OPR
+  if(!assessed.length){alert("Nessuna scheda e stata ancora sottoposta ad assessment.\nNon ci sono schede \'Confermata\' o \'Modificata e confermata\' da esportare.");return}
+  // Stesso ordinamento del Pacchetto Formale: per area, servizio, STR seguito dai suoi OPR
   var sorted=[];
   window.AREAS.forEach(function(area){
     area.svcs.forEach(function(sv){
@@ -1899,65 +1901,23 @@ window._exportAssessmentPDF=function(useWeb){
       var strs=svcEntries.filter(function(e){return e.type==="strategic"}).sort(function(a,b){return(a.data.codice||"")>(b.data.codice||"")?1:-1});
       strs.forEach(function(str){
         sorted.push(str);
-        var oprs=svcEntries.filter(function(e){return e.type==="operative"&&e.parentId===str.id}).sort(function(a,b){return(a.data.codice||"")>(b.data.codice||"")?1:-1});
-        oprs.forEach(function(opr){sorted.push(opr)});
+        svcEntries.filter(function(e){return e.type==="operative"&&e.parentId===str.id})
+          .sort(function(a,b){return(a.data.codice||"")>(b.data.codice||"")?1:-1})
+          .forEach(function(opr){sorted.push(opr)});
       });
-      var orphanOprs=svcEntries.filter(function(e){return e.type==="operative"&&!strs.some(function(s){return s.id===e.parentId})});
-      orphanOprs.forEach(function(opr){sorted.push(opr)});
+      svcEntries.filter(function(e){return e.type==="operative"&&!strs.some(function(s){return s.id===e.parentId})})
+        .forEach(function(opr){sorted.push(opr)});
     });
   });
-  var sortedIds={};sorted.forEach(function(e){sortedIds[e.id]=true});
-  assessed.forEach(function(e){if(!sortedIds[e.id])sorted.push(e)});
+  var seen={};sorted.forEach(function(e){seen[e.id]=true});
+  assessed.forEach(function(e){if(!seen[e.id])sorted.push(e)});
+
   var nConf=assessed.filter(function(e){return e.data.assessmentStatus==="confirmed"}).length;
-  var nMod=assessed.filter(function(e){return e.data.assessmentStatus==="modified_confirmed"}).length;
-  var mkFn=useWeb?window._mkPDFweb:window._mkPDF;
-  var fname="Schede_Assessment_"+new Date().toISOString().slice(0,10)+".pdf";
-  try{
-    var doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-    // ── FRONTESPIZIO ──
-    doc.setDrawColor(0,51,102);doc.setLineWidth(1.5);doc.rect(8,8,281,194);
-    try{doc.addImage(window.LOGO_MD,"PNG",128,25,40,40)}catch(e){}
-    doc.setTextColor(0,51,102);doc.setFontSize(20);doc.setFont("helvetica","bold");
-    doc.text("REGIONE MOLISE",148,80,{align:"center"});
-    doc.setFontSize(14);doc.text("Schede Sottoposte ad Assessment",148,92,{align:"center"});
-    doc.setFontSize(11);doc.setFont("helvetica","normal");doc.setTextColor(60);
-    doc.text("Piano della Performance Organizzativa "+(window.PIANO_CORRENTE||"2026-2028"),148,102,{align:"center"});
-    doc.setFontSize(9);doc.setTextColor(90);
-    doc.text("Servizio Supporto DG della Giunta Regionale",148,114,{align:"center"});
-    doc.text("Ufficio Programmazione strategica - Performance organizzativa",148,120,{align:"center"});
-    // Riepilogo conteggi
-    doc.setDrawColor(180);doc.setLineWidth(0.3);doc.line(90,130,206,130);
-    doc.setFontSize(10);doc.setTextColor(0,51,102);doc.setFont("helvetica","bold");
-    doc.text("Totale schede: "+sorted.length,148,140,{align:"center"});
-    doc.setFont("helvetica","normal");doc.setTextColor(0,120,0);
-    doc.text("Confermate: "+nConf,120,148,{align:"center"});
-    doc.setTextColor(200,90,0);
-    doc.text("Modificate e confermate: "+nMod,185,148,{align:"center"});
-    doc.setTextColor(120);doc.setFontSize(8);
-    doc.text("Generato il "+new Date().toLocaleString("it-IT"),148,190,{align:"center"});
-    // ── INDICE (usa la funzione globale se disponibile) ──
-    if(window._mkFrontIndex){
-      try{
-        var doc2=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-        var linkMap=window._mkFrontIndex(doc2,sorted);
-        var indexPages=doc2.getNumberOfPages();
-        var entryPages=[];
-        sorted.forEach(function(entry,i){var pageBefore=doc2.getNumberOfPages();doc2=mkFn(entry,doc2,true);entryPages[i]=pageBefore+1});
-        linkMap.forEach(function(lnk){if(lnk.idx>=0&&lnk.idx<entryPages.length){doc2.setPage(lnk.page);doc2.link(lnk.x,lnk.y,200,3.5,{pageNumber:entryPages[lnk.idx]});doc2.setFontSize(6);doc2.setFont("helvetica","normal");doc2.setTextColor(100);doc2.text("pag. "+entryPages[lnk.idx],285,lnk.y+2.5,{align:"right"});doc2.setTextColor(0)}});
-        var tp=doc2.getNumberOfPages();
-        for(var p=1;p<=tp;p++){doc2.setPage(p);doc2.setFontSize(6);doc2.setFont("helvetica","normal");doc2.setTextColor(150);doc2.text(p+" di "+tp,287,207,{align:"right"})}
-        doc2.save(fname);
-        alert("PDF Assessment scaricato!\n\n"+sorted.length+" schede totali:\n- "+nConf+" Confermate\n- "+nMod+" Modificate e confermate");
-        return;
-      }catch(e2){console.warn("Indice non disponibile, uso frontespizio semplice:",e2)}
-    }
-    // Fallback semplice: frontespizio + schede
-    sorted.forEach(function(en){doc.addPage();mkFn(en,doc,true)});
-    var totalPages=doc.getNumberOfPages();
-    for(var pg=1;pg<=totalPages;pg++){doc.setPage(pg);doc.setFontSize(6);doc.setFont("helvetica","normal");doc.setTextColor(150);doc.text(pg+" di "+totalPages,287,207,{align:"right"})}
-    doc.save(fname);
-    alert("PDF Assessment scaricato!\n\n"+sorted.length+" schede totali:\n- "+nConf+" Confermate\n- "+nMod+" Modificate e confermate");
-  }catch(err){console.error("PDF Assessment:",err);alert("Errore generazione PDF: "+err.message)}
+  var nMod=assessed.length-nConf;
+  // Stessa pipeline del Pacchetto Formale: frontespizio + indice con collegamenti ipertestuali
+  window._doExportPDF(sorted,useWeb?window._mkPDFweb:window._mkPDF,
+    "Schede_Assessment_"+new Date().toISOString().slice(0,10)+".pdf");
+  alert("PDF Assessment scaricato!\n\n"+sorted.length+" schede totali:\n- "+nConf+" Confermate\n- "+nMod+" Modificate e confermate");
 };
 
 // Esporta Alberatura OVP > STR > OPR
